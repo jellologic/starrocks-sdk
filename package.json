@@ -11,7 +11,8 @@
     "test:integration": "bun test --timeout 30000",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f"
+    "db:logs": "docker compose logs -f",
+    "docs:pull": "rm -rf .starrocks-docs && mkdir -p .starrocks-docs && cd .starrocks-docs && git init && git remote add origin https://github.com/StarRocks/starrocks.git && git sparse-checkout set docs/en && git pull origin main --depth 1 && echo 'StarRocks docs pulled to .starrocks-docs/docs/en'"
   },
   "dependencies": {
     "@effect/schema": "^0.75.5",
