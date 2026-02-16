@@ -161,6 +161,12 @@ export function decimal<TName extends string>(
   name: TName,
   config: { precision: number; scale: number }
 ): Column<string, TName> {
+  if (config.precision < 1 || config.precision > 38) {
+    throw new Error(`DECIMAL precision must be 1-38, got ${config.precision}`);
+  }
+  if (config.scale < 0 || config.scale > config.precision) {
+    throw new Error(`DECIMAL scale must be 0-${config.precision}, got ${config.scale}`);
+  }
   return new ColumnBuilder<string, TName>(
     name,
     `DECIMAL(${config.precision}, ${config.scale})`,
@@ -182,6 +188,9 @@ export function varchar<TName extends string>(
   name: TName,
   config: { length: number }
 ): Column<string, TName> {
+  if (config.length < 1 || config.length > 1_048_576) {
+    throw new Error(`VARCHAR length must be 1-1048576, got ${config.length}`);
+  }
   return new ColumnBuilder<string, TName>(
     name,
     `VARCHAR(${config.length})`,
@@ -197,6 +206,9 @@ export function char<TName extends string>(
   name: TName,
   config: { length: number }
 ): Column<string, TName> {
+  if (config.length < 1 || config.length > 255) {
+    throw new Error(`CHAR length must be 1-255, got ${config.length}`);
+  }
   return new ColumnBuilder<string, TName>(
     name,
     `CHAR(${config.length})`,

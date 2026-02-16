@@ -12,7 +12,7 @@ import type { IntrospectedSchema } from "./introspector";
 import { generateCreateTableSQL, generateCreateIndexSQL, generateDropIndexSQL } from "./table";
 import { generateCreateViewSQL, generateDropViewSQL, generateReplaceViewSQL } from "./view";
 import { generateCreateMaterializedViewSQL, generateDropMaterializedViewSQL, generateAlterRefreshSQL } from "./materialized-view";
-import { formatDefaultValue } from "./sql-utils";
+import { formatDefaultValue, quoteIdentifier } from "./sql-utils";
 import type { Migration as ExecutableMigration, MigrationStep } from "../migrations";
 
 // ============================================================================
@@ -256,7 +256,7 @@ function generateTableAlterStatements(
         }
       }
       if (setPairs.length > 0) {
-        const escaped = isReservedWord(tableName) ? `\`${tableName}\`` : tableName;
+        const escaped = quoteIdentifier(tableName);
         up.push({
           sql: `ALTER TABLE ${escaped} SET (${setPairs.join(", ")})`,
           description: `Set properties on '${tableName}': ${change.propertyChanges.join(", ")}`,
@@ -292,8 +292,8 @@ function generateTableRecreateStatements(
   if (!table) return;
 
   // Need to quote reserved words like "user"
-  const escaped = isReservedWord(tableName) ? `\`${tableName}\`` : tableName;
-  const escapedOld = isReservedWord(tableName) ? `\`${tableName}_old\`` : `${tableName}_old`;
+  const escaped = quoteIdentifier(tableName);
+  const escapedOld = quoteIdentifier(`${tableName}_old`);
 
   // Get column list from schema definition
   const columns = Object.values(table.columns)
@@ -351,15 +351,8 @@ function generateTableRecreateStatements(
   });
 }
 
-const RESERVED_WORDS = new Set([
-  "user", "session", "account", "order", "group", "table", "index",
-  "select", "insert", "update", "delete", "from", "where", "key",
-  "column", "database", "schema", "grant", "role", "function",
-]);
-
-function isReservedWord(name: string): boolean {
-  return RESERVED_WORDS.has(name.toLowerCase());
-}
+// quoteIdentifier imported from ./sql-utils — always quotes identifiers
+// to avoid issues with StarRocks' 200+ reserved words.
 
 function generateColumnAlterStatements(
   tableName: string,
@@ -367,7 +360,7 @@ function generateColumnAlterStatements(
   up: MigrationStatement[],
   down: MigrationStatement[]
 ): void {
-  const escaped = isReservedWord(tableName) ? `\`${tableName}\`` : tableName;
+  const escaped = quoteIdentifier(tableName);
 
   switch (change.type) {
     case "add": {
