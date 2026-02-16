@@ -31,7 +31,7 @@ export interface Column<
   readonly name: TName;
   readonly dataType: string;
   readonly isNotNull: boolean;
-  readonly defaultValue?: T;
+  readonly defaultValue?: T | string;
   readonly aggregateFunc?: AggregateFunction;
   readonly length?: number;
   readonly precision?: number;
@@ -40,8 +40,8 @@ export interface Column<
   /** Mark column as NOT NULL */
   notNull(): Column<T, TName, true, TDefault>;
 
-  /** Set default value */
-  default(value: T): Column<T, TName, TNotNull, true>;
+  /** Set default value (also accepts SQL keywords like "CURRENT_TIMESTAMP") */
+  default(value: T | string): Column<T, TName, TNotNull, true>;
 
   /** Set aggregate function (for AGGREGATE KEY tables) */
   aggregate(fn: AggregateFunction): Column<T, TName, TNotNull, TDefault>;
@@ -70,7 +70,7 @@ class ColumnBuilder<
     readonly name: TName,
     readonly dataType: string,
     readonly isNotNull: boolean = false,
-    readonly defaultValue?: T,
+    readonly defaultValue?: T | string,
     readonly aggregateFunc?: AggregateFunction,
     readonly length?: number,
     readonly precision?: number,
@@ -90,7 +90,7 @@ class ColumnBuilder<
     );
   }
 
-  default(value: T): Column<T, TName, TNotNull, true> {
+  default(value: T | string): Column<T, TName, TNotNull, true> {
     return new ColumnBuilder<T, TName, TNotNull, true>(
       this.name,
       this.dataType,
