@@ -526,7 +526,7 @@ describe("Query Builder", () => {
         .from(events);
 
       const { sql } = qb.toSQL();
-      expect(sql).toBe("SELECT *\nFROM events");
+      expect(sql).toBe("SELECT *\nFROM `events`");
     });
 
     test("should generate SELECT with specific columns", () => {
@@ -541,7 +541,7 @@ describe("Query Builder", () => {
       expect(sql).toContain("SELECT");
       expect(sql).toContain("events.id");
       expect(sql).toContain("events.name");
-      expect(sql).toContain("FROM events");
+      expect(sql).toContain("FROM `events`");
     });
 
     test("should generate SELECT with column alias", () => {
@@ -596,8 +596,8 @@ describe("Query Builder", () => {
         .innerJoin(venues, eq((events as any).venueId, (venues as any).id));
 
       const { sql } = qb.toSQL();
-      expect(sql).toContain("FROM events");
-      expect(sql).toContain("INNER JOIN venues ON (events.venue_id = venues.id)");
+      expect(sql).toContain("FROM `events`");
+      expect(sql).toContain("INNER JOIN `venues` ON (events.venue_id = venues.id)");
     });
 
     test("should generate LEFT JOIN", () => {
@@ -607,7 +607,7 @@ describe("Query Builder", () => {
         .leftJoin(venues, eq((events as any).venueId, (venues as any).id));
 
       const { sql } = qb.toSQL();
-      expect(sql).toContain("LEFT JOIN venues ON");
+      expect(sql).toContain("LEFT JOIN `venues` ON");
     });
   });
 

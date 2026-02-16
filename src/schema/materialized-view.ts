@@ -275,13 +275,15 @@ export function createMaterializedView<TName extends string>(
  * All identifiers are properly quoted with backticks.
  */
 export function generateCreateMaterializedViewSQL<T extends MaterializedView<any, any>>(
-  mv: T
+  mv: T,
+  ifNotExists: boolean = true
 ): string {
   const lines: string[] = [];
   const mvName = (mv as any)._mvName ?? mv.name;
 
   // Quote MV name
-  lines.push(`CREATE MATERIALIZED VIEW ${quoteIdentifier(mvName)}`);
+  const ine = ifNotExists ? " IF NOT EXISTS" : "";
+  lines.push(`CREATE MATERIALIZED VIEW${ine} ${quoteIdentifier(mvName)}`);
 
   // Comment
   if (mv.config.comment) {

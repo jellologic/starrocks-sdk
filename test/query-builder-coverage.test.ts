@@ -180,7 +180,7 @@ describe("JOIN operations", () => {
       .innerJoin(venues, eq(events.venueId, venues.id))
       .toSQL();
 
-    expect(sql).toContain("INNER JOIN venues ON (events.venue_id = venues.id)");
+    expect(sql).toContain("INNER JOIN `venues` ON (events.venue_id = venues.id)");
   });
 
   test("LEFT JOIN produces correct SQL", () => {
@@ -190,7 +190,7 @@ describe("JOIN operations", () => {
       .leftJoin(venues, eq(events.venueId, venues.id))
       .toSQL();
 
-    expect(sql).toContain("LEFT JOIN venues ON (events.venue_id = venues.id)");
+    expect(sql).toContain("LEFT JOIN `venues` ON (events.venue_id = venues.id)");
   });
 
   test("RIGHT JOIN produces correct SQL", () => {
@@ -200,7 +200,7 @@ describe("JOIN operations", () => {
       .rightJoin(venues, eq(events.venueId, venues.id))
       .toSQL();
 
-    expect(sql).toContain("RIGHT JOIN venues ON (events.venue_id = venues.id)");
+    expect(sql).toContain("RIGHT JOIN `venues` ON (events.venue_id = venues.id)");
   });
 });
 
@@ -247,8 +247,8 @@ describe("Complex queries", () => {
       .toSQL();
 
     expect(sql).toContain("SELECT");
-    expect(sql).toContain("FROM events");
-    expect(sql).toContain("INNER JOIN venues");
+    expect(sql).toContain("FROM `events`");
+    expect(sql).toContain("INNER JOIN `venues`");
     expect(sql).toContain("WHERE (events.price > ?)");
     expect(sql).toContain("GROUP BY events.venue_id");
     expect(sql).toContain("HAVING (COUNT(*) > ?)");

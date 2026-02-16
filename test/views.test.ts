@@ -74,7 +74,7 @@ describe("View Definitions", () => {
       expect(recentEvents._type).toBe("view");
       expect(recentEvents.getViewName()).toBe("recent_events");
       expect(recentEvents.query.sql).toContain("SELECT");
-      expect(recentEvents.query.sql).toContain("FROM events");
+      expect(recentEvents.query.sql).toContain("FROM `events`");
     });
 
     test("should create view with security mode", () => {
@@ -141,7 +141,7 @@ describe("View Definitions", () => {
           .innerJoin(venues, eq(events.venueId, venues.id))
         );
 
-      expect(joinedView.query.sql).toContain("INNER JOIN venues");
+      expect(joinedView.query.sql).toContain("INNER JOIN `venues`");
       expect(joinedView.query.sql).toContain("events.venue_id = venues.id");
     });
   });
@@ -461,7 +461,7 @@ describe("Materialized View Definitions", () => {
 
       const sql = generateCreateMaterializedViewSQL(mv);
 
-      expect(sql).toContain("CREATE MATERIALIZED VIEW `test_mv`");
+      expect(sql).toContain("CREATE MATERIALIZED VIEW IF NOT EXISTS `test_mv`");
       expect(sql).toContain("AS");
       expect(sql).toContain("SELECT");
       expect(sql).toContain("GROUP BY");

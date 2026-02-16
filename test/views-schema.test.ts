@@ -429,7 +429,7 @@ describe("Type-Safe Views Integration", () => {
       expect(sql).toContain("CREATE VIEW `active_events_view`");
       expect(sql).toContain("AS");
       expect(sql).toContain("SELECT");
-      expect(sql).toContain("FROM view_test_events");
+      expect(sql).toContain("FROM `view_test_events`");
       expect(sql).toContain("WHERE");
       expect(sql).toContain("COMMENT 'Active events only'");
     });
@@ -438,7 +438,7 @@ describe("Type-Safe Views Integration", () => {
       const sql = generateCreateMaterializedViewSQL(eventStatsMV);
 
       // All identifiers are quoted with backticks for safety
-      expect(sql).toContain("CREATE MATERIALIZED VIEW `event_stats_mv`");
+      expect(sql).toContain("CREATE MATERIALIZED VIEW IF NOT EXISTS `event_stats_mv`");
       expect(sql).toContain("DISTRIBUTED BY RANDOM");
       expect(sql).toContain("BUCKETS 4");
       expect(sql).toContain("REFRESH MANUAL");
@@ -598,7 +598,7 @@ describe("View and MV Edge Cases", () => {
         .as((qb) => qb.select({ id: testEvents.id }).from(testEvents));
 
       const sql = generateCreateMaterializedViewSQL(selectMV);
-      expect(sql).toContain("CREATE MATERIALIZED VIEW `select`");
+      expect(sql).toContain("CREATE MATERIALIZED VIEW IF NOT EXISTS `select`");
     });
   });
 

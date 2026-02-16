@@ -10,6 +10,7 @@ import type { Columns, InferSelectType } from "./columns";
 import type { BooleanExpression, Expression } from "./expressions";
 import type { AggregateExpression } from "./aggregates";
 import type { WindowExpression } from "./window";
+import { quoteIdentifier } from "./sql-utils";
 
 // ============================================================================
 // Types
@@ -184,7 +185,7 @@ export class QueryBuilder<TResult = unknown> {
       };
     } else {
       // Use _tableName to avoid conflict with columns named "name"
-      qb._from = source._tableName ?? source.name;
+      qb._from = quoteIdentifier(source._tableName ?? source.name);
     }
 
     return qb;
@@ -237,7 +238,7 @@ export class QueryBuilder<TResult = unknown> {
   ): QueryBuilder<TResult> {
     const qb = this.clone();
     // Use _tableName to avoid conflict with columns named "name"
-    const tableName = (table as any)._tableName ?? table.name;
+    const tableName = quoteIdentifier((table as any)._tableName ?? table.name);
     qb._joins.push({ type, table: tableName, on });
     return qb;
   }
