@@ -248,7 +248,7 @@ export const TransactionLive = Layer.scoped(
               }),
           })
 
-          yield* parseResponse(result, handle.label, "prepare")
+          return yield* parseResponse(result, handle.label, "prepare")
         }).pipe(Effect.retry(retrySchedule)),
 
       commit: (handle) =>

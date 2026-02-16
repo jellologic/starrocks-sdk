@@ -124,10 +124,11 @@ export interface TransactionService {
 
   /**
    * Prepare (pre-commit) a transaction - makes data durable
+   * Returns metrics (row counts, bytes, timing) from StarRocks.
    */
   readonly prepare: (
     handle: TransactionHandle
-  ) => Effect.Effect<void, TransactionError>
+  ) => Effect.Effect<TransactionResult, TransactionError>
 
   /**
    * Commit a transaction - makes data visible
