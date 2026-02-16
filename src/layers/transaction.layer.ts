@@ -199,7 +199,7 @@ export const TransactionLive = Layer.scoped(
           })
 
           yield* parseResponse(result, handle.label, "load")
-        }),
+        }).pipe(Effect.retry(retrySchedule)),
 
       prepare: (handle) =>
         Effect.gen(function* () {
@@ -236,7 +236,7 @@ export const TransactionLive = Layer.scoped(
           })
 
           yield* parseResponse(result, handle.label, "prepare")
-        }),
+        }).pipe(Effect.retry(retrySchedule)),
 
       commit: (handle) =>
         Effect.gen(function* () {
@@ -273,7 +273,7 @@ export const TransactionLive = Layer.scoped(
           })
 
           return yield* parseResponse(result, handle.label, "commit")
-        }),
+        }).pipe(Effect.retry(retrySchedule)),
 
       abort: (handle) =>
         Effect.gen(function* () {
