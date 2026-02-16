@@ -34,8 +34,22 @@ export interface TransactionResult {
   readonly numberLoadedRows?: number
   /** Number of rows filtered (after commit) */
   readonly numberFilteredRows?: number
+  /** Number of rows unselected */
+  readonly numberUnselectedRows?: number
   /** Total bytes loaded (after commit) */
   readonly loadBytes?: number
+  /** Total load time in ms */
+  readonly loadTimeMs?: number
+  /** Begin transaction time in ms */
+  readonly beginTxnTimeMs?: number
+  /** Stream load plan time in ms */
+  readonly streamLoadPlanTimeMs?: number
+  /** Read data time in ms */
+  readonly readDataTimeMs?: number
+  /** Write data time in ms */
+  readonly writeDataTimeMs?: number
+  /** Commit and publish time in ms */
+  readonly commitAndPublishTimeMs?: number
 }
 
 /**
@@ -50,6 +64,10 @@ export interface TransactionLoadOptions {
   readonly format?: "csv" | "json"
   /** Column separator for CSV */
   readonly columnSeparator?: string
+  /** Row delimiter for CSV */
+  readonly rowDelimiter?: string
+  /** JSON paths for extracting data */
+  readonly jsonPaths?: string[]
   /** Strip outer JSON array */
   readonly stripOuterArray?: boolean
   /**

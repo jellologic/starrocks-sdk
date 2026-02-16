@@ -48,7 +48,14 @@ function parseResponse(
     message,
     numberLoadedRows: typeof result.NumberLoadedRows === "number" ? result.NumberLoadedRows : undefined,
     numberFilteredRows: typeof result.NumberFilteredRows === "number" ? result.NumberFilteredRows : undefined,
+    numberUnselectedRows: typeof result.NumberUnselectedRows === "number" ? result.NumberUnselectedRows : undefined,
     loadBytes: typeof result.LoadBytes === "number" ? result.LoadBytes : undefined,
+    loadTimeMs: typeof result.LoadTimeMs === "number" ? result.LoadTimeMs : undefined,
+    beginTxnTimeMs: typeof result.BeginTxnTimeMs === "number" ? result.BeginTxnTimeMs : undefined,
+    streamLoadPlanTimeMs: typeof result.StreamLoadPlanTimeMs === "number" ? result.StreamLoadPlanTimeMs : undefined,
+    readDataTimeMs: typeof result.ReadDataTimeMs === "number" ? result.ReadDataTimeMs : undefined,
+    writeDataTimeMs: typeof result.WriteDataTimeMs === "number" ? result.WriteDataTimeMs : undefined,
+    commitAndPublishTimeMs: typeof result.CommitAndPublishTimeMs === "number" ? result.CommitAndPublishTimeMs : undefined,
   })
 }
 
@@ -160,11 +167,17 @@ export const TransactionLive = Layer.scoped(
           const body = Array.isArray(data) ? JSON.stringify(data) : data
           const format = options?.format ?? (Array.isArray(data) ? "json" : "csv")
 
+          // Determine strip_outer_array: respect explicit option, default to true for array data
+          const stripOuterArray = options?.stripOuterArray ?? Array.isArray(data)
+
           const headers = makeHeaders(handle.label, handle.database, table, {
             "Content-Type": "text/plain",
-            ...(format === "json" && { format: "json", strip_outer_array: "true" }),
+            ...(format === "json" && { format: "json" }),
+            ...(format === "json" && stripOuterArray && { strip_outer_array: "true" }),
+            ...(format === "json" && options?.jsonPaths && { jsonpaths: JSON.stringify(options.jsonPaths) }),
             ...(options?.columns && { columns: options.columns.join(", ") }),
             ...(options?.columnSeparator && { column_separator: options.columnSeparator }),
+            ...(options?.rowDelimiter && { row_delimiter: options.rowDelimiter }),
             ...(options?.partialUpdate && { partial_update: "true" }),
             ...(options?.partialUpdateMode && { partial_update_mode: options.partialUpdateMode }),
           })
