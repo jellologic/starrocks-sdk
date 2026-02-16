@@ -8,6 +8,29 @@
 import type { StarRocksConfig } from "./types";
 import { createPool, type Pool } from "mysql2/promise";
 
+/**
+ * Validate a SQL identifier (database, table name).
+ */
+function validateIdentifier(name: string): string {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid SQL identifier: ${name}. Only alphanumeric characters and underscores are allowed.`);
+  }
+  if (name.length > 128) {
+    throw new Error(`SQL identifier too long (max 128): ${name}`);
+  }
+  return name;
+}
+
+/**
+ * Redact credentials from SQL strings for safe logging.
+ */
+function redactCredentials(sql: string): string {
+  return sql.replace(
+    /("(?:access_key|secret_key|password|aws\.s3\.access_key|aws\.s3\.secret_key)")\s*=\s*"[^"]+"/gi,
+    '$1 = "[REDACTED]"'
+  );
+}
+
 // ============================================================================
 // Types
 // ============================================================================
@@ -197,7 +220,7 @@ export class DataArchiveClient {
         success: true,
         durationMs: Date.now() - startTime,
       };
-    } catch (error) {
+    } catch {
       return {
         success: false,
         files: [],
@@ -212,6 +235,9 @@ export class DataArchiveClient {
    * Define a reusable archive policy
    */
   definePolicy(config: ArchivePolicyConfig): ArchivePolicy {
+    validateIdentifier(config.source.database);
+    validateIdentifier(config.source.table);
+
     const self = this;
     return {
       ...config,
@@ -260,22 +286,27 @@ export class DataArchiveClient {
   async purgeArchived(options: PurgeOptions): Promise<PurgeResult> {
     const { database, table, filter, dryRun = false } = options;
 
+    validateIdentifier(database);
+    validateIdentifier(table);
+
     if (!filter || filter.trim() === "") {
       throw new Error(
         "Filter is required for purgeArchived to prevent accidental full table deletes"
       );
     }
 
+    const qualifiedTable = `${database}.${table}`;
+
     if (dryRun) {
       // Count rows that would be deleted
-      const countSql = `SELECT COUNT(*) as cnt FROM ${database}.${table} WHERE ${filter}`;
+      const countSql = `SELECT COUNT(*) as cnt FROM ${qualifiedTable} WHERE ${filter}`;
       const [rows] = await this.pool.query(countSql);
       const count = (rows as Array<{ cnt: number }>)[0]?.cnt ?? 0;
       return { deletedRows: count, dryRun: true };
     }
 
     // Actually delete the rows
-    const deleteSql = `DELETE FROM ${database}.${table} WHERE ${filter}`;
+    const deleteSql = `DELETE FROM ${qualifiedTable} WHERE ${filter}`;
     const [result] = await this.pool.query(deleteSql);
     const affectedRows = (result as { affectedRows?: number }).affectedRows ?? 0;
 
@@ -327,22 +358,24 @@ export class DataArchiveClient {
     }
 
     // Destination-specific credentials
+    // Note: StarRocks INSERT INTO FILES requires credentials as property strings.
+    // Values are escaped to prevent SQL injection via credential fields.
     if (options.destination.type === "s3") {
       const s3 = options.destination;
-      properties.push(`"aws.s3.access_key" = "${s3.credentials.accessKey}"`);
-      properties.push(`"aws.s3.secret_key" = "${s3.credentials.secretKey}"`);
-      properties.push(`"aws.s3.region" = "${s3.credentials.region}"`);
+      properties.push(`"aws.s3.access_key" = "${s3.credentials.accessKey.replace(/["\\]/g, "")}"`);
+      properties.push(`"aws.s3.secret_key" = "${s3.credentials.secretKey.replace(/["\\]/g, "")}"`);
+      properties.push(`"aws.s3.region" = "${s3.credentials.region.replace(/["\\]/g, "")}"`);
       if (s3.credentials.endpoint) {
-        properties.push(`"aws.s3.endpoint" = "${s3.credentials.endpoint}"`);
+        properties.push(`"aws.s3.endpoint" = "${s3.credentials.endpoint.replace(/["\\]/g, "")}"`);
       }
     } else if (options.destination.type === "hdfs") {
       const hdfs = options.destination;
       properties.push(
         `"hadoop.security.authentication" = "simple"`
       );
-      properties.push(`"username" = "${hdfs.credentials.username}"`);
+      properties.push(`"username" = "${hdfs.credentials.username.replace(/["\\]/g, "")}"`);
       if (hdfs.credentials.password) {
-        properties.push(`"password" = "${hdfs.credentials.password}"`);
+        properties.push(`"password" = "${hdfs.credentials.password.replace(/["\\]/g, "")}"`);
       }
     }
 
