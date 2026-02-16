@@ -781,11 +781,12 @@ describe("Migration Generation", () => {
       name: "create_events_table",
     });
 
-    expect(fileContent).toContain("import { createMigration }");
-    expect(fileContent).toContain("name: \"create_events_table\"");
-    expect(fileContent).toContain("up: async (db)");
-    expect(fileContent).toContain("down: async (db)");
-    expect(fileContent).toContain("db.execute");
+    expect(fileContent).toContain("import type { Migration } from \"@jellologic/starrocks-sdk\"");
+    expect(fileContent).toContain("id: \"create_events_table\"");
+    expect(fileContent).toContain("description: \"create_events_table\"");
+    expect(fileContent).toContain("up: [");
+    expect(fileContent).toContain("down: [");
+    expect(fileContent).toContain("export default migration;");
   });
 
   test("should generate SQL-only migration", () => {

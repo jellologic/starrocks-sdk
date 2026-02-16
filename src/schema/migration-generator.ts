@@ -797,37 +797,58 @@ function generateMaterializedViewChangeStatements(
  * Generate TypeScript migration file content
  */
 function generateMigrationFileContent(migration: GeneratedMigrationPlan): string {
-  const upStatements = migration.up
-    .map((stmt) => `    // ${stmt.description}\n    await db.execute(\`${escapeBackticks(stmt.sql)}\`);`)
-    .join("\n\n");
+  const upSteps = migration.up
+    .map((stmt, i) => {
+      const idempotent = stmt.sql.toUpperCase().includes("IF EXISTS") || stmt.sql.toUpperCase().includes("IF NOT EXISTS");
+      return `    {
+      name: "step_${i + 1}",
+      description: "${escapeDoubleQuotes(stmt.description)}",
+      sql: \`${escapeBackticks(stmt.sql)}\`,
+      idempotent: ${idempotent},
+    }`;
+    })
+    .join(",\n");
 
-  const downStatements = migration.down
-    .map((stmt) => `    // ${stmt.description}\n    await db.execute(\`${escapeBackticks(stmt.sql)}\`);`)
-    .join("\n\n");
+  const downSteps = migration.down
+    .map((stmt, i) => {
+      const idempotent = stmt.sql.toUpperCase().includes("IF EXISTS") || stmt.sql.toUpperCase().includes("IF NOT EXISTS");
+      return `    {
+      name: "rollback_${i + 1}",
+      description: "${escapeDoubleQuotes(stmt.description)}",
+      sql: \`${escapeBackticks(stmt.sql)}\`,
+      idempotent: ${idempotent},
+    }`;
+    })
+    .join(",\n");
 
   return `/**
  * Migration: ${migration.name}
  * Generated: ${new Date(migration.timestamp).toISOString()}
  */
 
-import { createMigration } from "@jellologic/starrocks-sdk";
+import type { Migration } from "@jellologic/starrocks-sdk";
 
-export default createMigration({
-  name: "${migration.name}",
+const migration: Migration = {
+  id: "${migration.name}",
+  description: "${escapeDoubleQuotes(migration.name)}",
+  up: [
+${upSteps || "    // No changes"}
+  ],
+  down: [
+${downSteps || "    // No changes"}
+  ],
+};
 
-  up: async (db) => {
-${upStatements || "    // No changes"}
-  },
-
-  down: async (db) => {
-${downStatements || "    // No changes"}
-  },
-});
+export default migration;
 `;
 }
 
 function escapeBackticks(sql: string): string {
   return sql.replace(/`/g, "\\`").replace(/\${/g, "\\${");
+}
+
+function escapeDoubleQuotes(str: string): string {
+  return str.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
 }
 
 // ============================================================================
