@@ -1,0 +1,58 @@
+name: StarRocks Integration Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      starrocks:
+        image: starrocks/allin1-ubuntu
+        ports:
+          - 9030:9030
+          - 8030:8030
+          - 8040:8040
+        options: >-
+          --health-cmd "mysql -h 127.0.0.1 -P 9030 -u root -e 'SELECT 1'"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 60s
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install
+
+      - name: Wait for StarRocks to be ready
+        run: |
+          echo "Waiting for StarRocks..."
+          for i in {1..30}; do
+            if mysql -h 127.0.0.1 -P 9030 -u root -e "SELECT 1" 2>/dev/null; then
+              echo "StarRocks is ready!"
+              break
+            fi
+            echo "Attempt $i/30..."
+            sleep 5
+          done
+
+      - name: Run tests
+        run: bun test --timeout 30000
+        env:
+          STARROCKS_TEST_HOST: 127.0.0.1
+          STARROCKS_TEST_PORT: 9030
+          STARROCKS_TEST_USER: root
+          STARROCKS_TEST_PASSWORD: ""
