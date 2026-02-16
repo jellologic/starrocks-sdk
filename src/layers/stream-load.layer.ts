@@ -64,20 +64,27 @@ function generateLabel(): string {
 }
 
 /**
- * Parse Stream Load response from StarRocks
+ * Parse and validate Stream Load response from StarRocks.
+ * Uses runtime type checks instead of unsafe `as` casts.
  */
 function parseResponse(result: Record<string, unknown>): StreamLoadResult {
+  const validStatuses = ["Success", "Fail", "Publish Timeout", "Label Already Exists"] as const
+  const rawStatus = typeof result.Status === "string" ? result.Status : "Fail"
+  const status = validStatuses.includes(rawStatus as typeof validStatuses[number])
+    ? (rawStatus as StreamLoadResult["status"])
+    : "Fail"
+
   return {
-    txnId: (result.TxnId as number) ?? 0,
-    label: (result.Label as string) ?? "",
-    status: (result.Status as StreamLoadResult["status"]) ?? "Fail",
-    message: (result.Message as string) ?? "",
-    numberLoadedRows: (result.NumberLoadedRows as number) ?? 0,
-    numberFilteredRows: (result.NumberFilteredRows as number) ?? 0,
-    numberUnselectedRows: (result.NumberUnselectedRows as number) ?? 0,
-    loadBytes: (result.LoadBytes as number) ?? 0,
-    loadTimeMs: (result.LoadTimeMs as number) ?? 0,
-    errorUrl: result.ErrorURL as string | undefined,
+    txnId: typeof result.TxnId === "number" ? result.TxnId : 0,
+    label: typeof result.Label === "string" ? result.Label : "",
+    status,
+    message: typeof result.Message === "string" ? result.Message : "",
+    numberLoadedRows: typeof result.NumberLoadedRows === "number" ? result.NumberLoadedRows : 0,
+    numberFilteredRows: typeof result.NumberFilteredRows === "number" ? result.NumberFilteredRows : 0,
+    numberUnselectedRows: typeof result.NumberUnselectedRows === "number" ? result.NumberUnselectedRows : 0,
+    loadBytes: typeof result.LoadBytes === "number" ? result.LoadBytes : 0,
+    loadTimeMs: typeof result.LoadTimeMs === "number" ? result.LoadTimeMs : 0,
+    errorUrl: typeof result.ErrorURL === "string" ? result.ErrorURL : undefined,
   }
 }
 
@@ -138,6 +145,8 @@ export const StreamLoadLive = Layer.effect(
         // Convert Buffer to Uint8Array for fetch compatibility
         const body = Buffer.isBuffer(data) ? new Uint8Array(data) : data
 
+        // Default HTTP timeout: 2 minutes (separate from StarRocks server-side timeout)
+        const httpTimeoutMs = (options.timeout ?? 120) * 1000
         const response = yield* Effect.tryPromise({
           try: () =>
             fetch(url, {
@@ -145,11 +154,14 @@ export const StreamLoadLive = Layer.effect(
               headers,
               body,
               redirect: "follow",
+              signal: AbortSignal.timeout(httpTimeoutMs),
             }),
           catch: (e) =>
             new StreamLoadError({
               table: options.table,
-              message: e instanceof Error ? e.message : "HTTP request failed",
+              message: e instanceof Error && e.name === "TimeoutError"
+                ? `HTTP request timed out after ${httpTimeoutMs}ms`
+                : e instanceof Error ? e.message : "HTTP request failed",
             }),
         })
 
@@ -207,13 +219,13 @@ export const StreamLoadLive = Layer.effect(
       return attempt().pipe(
         Effect.retry(schedule),
         Effect.tapError((error) =>
-          Effect.sync(() => {
-            if (attemptCount > 1) {
-              console.warn(
-                `Stream load to ${options.table} failed after ${attemptCount} attempts: ${error.message}`
-              )
-            }
-          })
+          attemptCount > 1
+            ? Effect.logWarning("Stream load failed after retries", {
+                table: options.table,
+                attempts: attemptCount,
+                error: error.message,
+              })
+            : Effect.void
         )
       )
     }

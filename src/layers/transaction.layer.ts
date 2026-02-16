@@ -1,5 +1,5 @@
 // packages/starrocks/src/layers/transaction.layer.ts
-import { Effect, Layer } from "effect"
+import { Effect, Layer, Schedule, Duration } from "effect"
 import {
   Transaction,
   type TransactionService,
@@ -10,16 +10,17 @@ import { TransactionError } from "../errors"
 import { StarRocksConfig } from "../config/starrocks.config"
 
 /**
- * Parse transaction response from StarRocks
- * Returns Effect to properly handle errors in the Effect error channel
+ * Parse and validate transaction response from StarRocks.
+ * Uses runtime type checks instead of unsafe `as` casts.
+ * Returns Effect to properly handle errors in the Effect error channel.
  */
 function parseResponse(
   result: Record<string, unknown>,
   label: string,
   phase: "begin" | "load" | "prepare" | "commit" | "abort"
 ): Effect.Effect<TransactionResult, TransactionError> {
-  const status = (result.Status as string) ?? "FAILED"
-  const message = (result.Message as string) ?? ""
+  const status = typeof result.Status === "string" ? result.Status : "FAILED"
+  const message = typeof result.Message === "string" ? result.Message : ""
 
   const errorStatuses = [
     "FAILED",
@@ -34,21 +35,37 @@ function parseResponse(
       new TransactionError({
         label,
         phase,
-        txnId: result.TxnId as number | undefined,
+        txnId: typeof result.TxnId === "number" ? result.TxnId : undefined,
         cause: message || `Transaction ${phase} failed with status: ${status}`,
       })
     )
   }
 
   return Effect.succeed({
-    txnId: (result.TxnId as number) ?? 0,
-    label: (result.Label as string) ?? label,
+    txnId: typeof result.TxnId === "number" ? result.TxnId : 0,
+    label: typeof result.Label === "string" ? result.Label : label,
     status: status === "OK" ? "OK" : "FAILED",
     message,
-    numberLoadedRows: result.NumberLoadedRows as number | undefined,
-    numberFilteredRows: result.NumberFilteredRows as number | undefined,
-    loadBytes: result.LoadBytes as number | undefined,
+    numberLoadedRows: typeof result.NumberLoadedRows === "number" ? result.NumberLoadedRows : undefined,
+    numberFilteredRows: typeof result.NumberFilteredRows === "number" ? result.NumberFilteredRows : undefined,
+    loadBytes: typeof result.LoadBytes === "number" ? result.LoadBytes : undefined,
   })
+}
+
+/** Default HTTP timeout for transaction operations (2 minutes) */
+const DEFAULT_HTTP_TIMEOUT_MS = 120_000
+
+/**
+ * Check if an error is retryable
+ */
+function isRetryableError(error: TransactionError): boolean {
+  const message = (error.cause ?? "").toLowerCase()
+  const retryablePatterns = [
+    "timeout", "connection refused", "connection reset",
+    "econnreset", "econnrefused", "etimedout", "socket hang up",
+    "network error", "service unavailable", "temporarily unavailable",
+  ]
+  return retryablePatterns.some((p) => message.includes(p))
 }
 
 /**
@@ -76,6 +93,13 @@ export const TransactionLive = Layer.effect(
       ...extra,
     })
 
+    // Retry schedule for transient failures (3 retries, exponential backoff)
+    const retrySchedule = Schedule.exponential(Duration.millis(1000), 2).pipe(
+      Schedule.either(Schedule.spaced(Duration.millis(30_000))),
+      Schedule.compose(Schedule.recurs(3)),
+      Schedule.whileInput((error: TransactionError) => isRetryableError(error))
+    )
+
     return {
       begin: (options) =>
         Effect.gen(function* () {
@@ -85,13 +109,20 @@ export const TransactionLive = Layer.effect(
             ...(options.multiTable && { transaction_type: "multi" }),
           })
 
+          const timeoutMs = options.timeout ? options.timeout * 1000 : DEFAULT_HTTP_TIMEOUT_MS
           const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/begin`, { method: "POST", headers }),
+            try: () => fetch(`${baseUrl}/begin`, {
+              method: "POST",
+              headers,
+              signal: AbortSignal.timeout(timeoutMs),
+            }),
             catch: (e) =>
               new TransactionError({
                 label: options.label,
                 phase: "begin",
-                cause: e instanceof Error ? e.message : "HTTP request failed",
+                cause: e instanceof Error && e.name === "TimeoutError"
+                  ? `HTTP request timed out after ${timeoutMs}ms`
+                  : e instanceof Error ? e.message : "HTTP request failed",
               }),
           })
 
@@ -114,7 +145,7 @@ export const TransactionLive = Layer.effect(
             table: options.table,
             multiTable: options.multiTable ?? false,
           } satisfies TransactionHandle
-        }),
+        }).pipe(Effect.retry(retrySchedule)),
 
       load: (handle, data, options) =>
         Effect.gen(function* () {
@@ -132,13 +163,20 @@ export const TransactionLive = Layer.effect(
           })
 
           const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/load`, { method: "PUT", headers, body }),
+            try: () => fetch(`${baseUrl}/load`, {
+              method: "PUT",
+              headers,
+              body,
+              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
+            }),
             catch: (e) =>
               new TransactionError({
                 label: handle.label,
                 phase: "load",
                 txnId: handle.txnId,
-                cause: e instanceof Error ? e.message : "HTTP request failed",
+                cause: e instanceof Error && e.name === "TimeoutError"
+                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
+                  : e instanceof Error ? e.message : "HTTP request failed",
               }),
           })
 
@@ -163,13 +201,19 @@ export const TransactionLive = Layer.effect(
           })
 
           const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/prepare`, { method: "POST", headers }),
+            try: () => fetch(`${baseUrl}/prepare`, {
+              method: "POST",
+              headers,
+              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
+            }),
             catch: (e) =>
               new TransactionError({
                 label: handle.label,
                 phase: "prepare",
                 txnId: handle.txnId,
-                cause: e instanceof Error ? e.message : "HTTP request failed",
+                cause: e instanceof Error && e.name === "TimeoutError"
+                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
+                  : e instanceof Error ? e.message : "HTTP request failed",
               }),
           })
 
@@ -194,13 +238,19 @@ export const TransactionLive = Layer.effect(
           })
 
           const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/commit`, { method: "POST", headers }),
+            try: () => fetch(`${baseUrl}/commit`, {
+              method: "POST",
+              headers,
+              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
+            }),
             catch: (e) =>
               new TransactionError({
                 label: handle.label,
                 phase: "commit",
                 txnId: handle.txnId,
-                cause: e instanceof Error ? e.message : "HTTP request failed",
+                cause: e instanceof Error && e.name === "TimeoutError"
+                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
+                  : e instanceof Error ? e.message : "HTTP request failed",
               }),
           })
 
@@ -225,13 +275,19 @@ export const TransactionLive = Layer.effect(
           })
 
           const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/rollback`, { method: "POST", headers }),
+            try: () => fetch(`${baseUrl}/rollback`, {
+              method: "POST",
+              headers,
+              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
+            }),
             catch: (e) =>
               new TransactionError({
                 label: handle.label,
                 phase: "abort",
                 txnId: handle.txnId,
-                cause: e instanceof Error ? e.message : "HTTP request failed",
+                cause: e instanceof Error && e.name === "TimeoutError"
+                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
+                  : e instanceof Error ? e.message : "HTTP request failed",
               }),
           })
 
