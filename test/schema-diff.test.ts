@@ -2,13 +2,15 @@ import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import {
   createStarRocksClient,
   type StarRocksClient,
-  SchemaIntrospector,
+  LegacySchemaIntrospector as SchemaIntrospector,
   SchemaDiffer,
   SchemaValidator,
-  type SchemaDefinition,
-  type IntrospectedSchema,
-  type IntrospectedTable,
 } from "../src";
+import type {
+  SchemaDefinition,
+  IntrospectedSchema,
+  IntrospectedTable,
+} from "../src/schema-diff";
 import { testConfig, TEST_DATABASE } from "../src/test-config";
 import type { TableOptions } from "../src/types";
 

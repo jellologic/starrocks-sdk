@@ -173,7 +173,7 @@ export class DataArchiveClient {
   constructor(config: StarRocksConfig) {
     this.pool = createPool({
       host: config.host,
-      port: config.port,
+      port: config.mysqlPort,
       user: config.user,
       password: config.password,
       database: config.database,

@@ -2,7 +2,8 @@ import type { MySql2Database } from "drizzle-orm/mysql2";
 
 export interface StarRocksConfig {
   host: string;
-  port: number;
+  mysqlPort: number;
+  httpPort: number;
   user: string;
   password?: string;
   database?: string;

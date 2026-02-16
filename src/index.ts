@@ -57,7 +57,7 @@ export * from "./errors"
 // =============================================================================
 // Schema DSL (Unchanged) - Type-safe table definitions
 // =============================================================================
-export * from "./schema"
+export * from "./schema/index"
 
 // =============================================================================
 // StarRocks Client (for DDL, Stream Load, Migrations)
@@ -103,29 +103,22 @@ export {
   type PurgeResult,
 } from "./data-archive"
 
-// Materialized Views
+// Materialized Views (legacy class-based API)
 export {
   MaterializedViewManager,
   type MaterializedViewOptions,
-  type MaterializedViewProperties,
   type MaterializedViewInfo,
   type RefreshTaskInfo,
-  type RefreshStrategy,
   type ManualRefresh,
   type AsyncRefresh,
 } from "./materialized-views"
 
-// Schema Diff / Validation
+// Schema Diff / Validation (legacy class-based API)
 export {
-  SchemaIntrospector,
+  SchemaIntrospector as LegacySchemaIntrospector,
   SchemaDiffer,
   SchemaValidator,
   type TableSchema,
-  type SchemaDefinition,
-  type IntrospectedColumn,
-  type IntrospectedTable,
-  type IntrospectedSchema,
-  type SchemaDiff,
   type SchemaDiffResult,
   type DiffSeverity,
 } from "./schema-diff"
@@ -148,8 +141,6 @@ export type {
   // Configuration
   StarRocksConfig as StarRocksClientConfig,
   StarRocksConnection,
-  // Key types
-  KeyType,
   // Data types
   BasicDataType,
   DataType,
@@ -158,8 +149,6 @@ export type {
   StructType,
   StructField,
   VectorType,
-  // Aggregate functions
-  AggregateFunction,
   // Column definitions
   ColumnDef,
   // Index types
@@ -168,24 +157,18 @@ export type {
   BloomFilterIndex,
   InvertedIndex,
   VectorIndex,
-  VectorIndexType,
   HNSWParams,
   IVFPQParams,
   TokenizerType,
   // Partitioning
-  PartitionConfig,
-  RangePartitionConfig,
-  ListPartitionConfig,
   ExpressionPartition,
   RangePartition,
   ListPartition,
   // Distribution
-  DistributionConfig,
   HashDistribution,
   RandomDistribution,
   // Table options
   TableOptions,
-  TableProperties,
   LegacyTableOptions,
   // Load job info
   LoadJobInfo,

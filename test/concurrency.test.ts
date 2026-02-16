@@ -58,7 +58,7 @@ describe("Concurrency Tests", () => {
     // Create pool with explicit connection limit
     pool = mysql.createPool({
       host: testConfig.host,
-      port: testConfig.port,
+      port: testConfig.mysqlPort,
       user: testConfig.user,
       password: testConfig.password,
       database: TEST_DATABASE,

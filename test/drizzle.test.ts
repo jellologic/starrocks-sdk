@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createStarRocksClient, type StarRocksClient } from "../src";
-import { sql } from "../src/schema";
+import { sql } from "../src/drizzle-schema";
 import { testConfig, TEST_DATABASE } from "../src/test-config";
 import type { ColumnDef, LegacyTableOptions } from "../src/types";
 

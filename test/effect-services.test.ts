@@ -24,7 +24,7 @@ import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config"
 const streamLoadConfigLayer = StarRocksConfigLive({
   host: testConfig.host,
   httpPort: beHttpPort,
-  mysqlPort: testConfig.port,
+  mysqlPort: testConfig.mysqlPort,
   user: testConfig.user,
   password: testConfig.password ?? "",
 })
@@ -32,7 +32,7 @@ const streamLoadConfigLayer = StarRocksConfigLive({
 const transactionConfigLayer = StarRocksConfigLive({
   host: testConfig.host,
   httpPort: beHttpPort,
-  mysqlPort: testConfig.port,
+  mysqlPort: testConfig.mysqlPort,
   user: testConfig.user,
   password: testConfig.password ?? "",
 })

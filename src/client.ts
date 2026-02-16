@@ -32,7 +32,7 @@ export class StarRocksClient {
     this.config = config;
     this.pool = mysql.createPool({
       host: config.host,
-      port: config.port,
+      port: config.mysqlPort,
       user: config.user,
       password: config.password,
       database: config.database,
@@ -65,10 +65,10 @@ export class StarRocksClient {
   /**
    * Create a StreamLoadClient for bulk HTTP-based data loading
    */
-  createStreamLoader(httpPort = 8030): StreamLoadClient {
+  createStreamLoader(): StreamLoadClient {
     const config: StreamLoadConfig = {
       host: this.config.host,
-      httpPort,
+      httpPort: this.config.httpPort,
       user: this.config.user,
       password: this.config.password,
     };

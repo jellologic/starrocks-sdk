@@ -77,7 +77,7 @@ describe("Knex Builder Integration", () => {
     // Create pool for Knex builder
     pool = mysql.createPool({
       host: testConfig.host,
-      port: testConfig.port,
+      port: testConfig.mysqlPort,
       user: testConfig.user,
       password: testConfig.password,
       database: TEST_DATABASE,

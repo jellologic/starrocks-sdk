@@ -11,6 +11,7 @@ import { generateCreateTableSQL, generateCreateIndexSQL, generateDropIndexSQL } 
 import { generateCreateViewSQL, generateDropViewSQL, generateReplaceViewSQL } from "./view";
 import { generateCreateMaterializedViewSQL, generateDropMaterializedViewSQL, generateAlterRefreshSQL } from "./materialized-view";
 import { formatDefaultValue } from "./sql-utils";
+import type { Migration as ExecutableMigration, MigrationStep } from "../migrations";
 
 // ============================================================================
 // Migration Types
@@ -24,16 +25,47 @@ export interface MigrationStatement {
   objectName: string;
 }
 
-export interface Migration {
+export interface GeneratedMigrationPlan {
   name: string;
   timestamp: number;
   up: MigrationStatement[];
   down: MigrationStatement[];
 }
 
+/** @deprecated Use `GeneratedMigrationPlan` instead */
+export type Migration = GeneratedMigrationPlan;
+
 export interface GeneratedMigration {
-  migration: Migration;
+  migration: GeneratedMigrationPlan;
   fileContent: string;
+}
+
+/**
+ * Convert a GeneratedMigrationPlan into an executable Migration
+ * compatible with MigrationRunner.runMigration().
+ */
+export function toExecutableMigration(
+  plan: GeneratedMigrationPlan,
+  options?: { id?: string; description?: string }
+): ExecutableMigration {
+  const id = options?.id ?? `${plan.timestamp}_${plan.name}`;
+  const description = options?.description ?? plan.name;
+
+  const up: MigrationStep[] = plan.up.map((stmt, i) => ({
+    name: `step_${i + 1}`,
+    description: stmt.description,
+    sql: stmt.sql,
+    idempotent: stmt.sql.toUpperCase().includes("IF EXISTS") || stmt.sql.toUpperCase().includes("IF NOT EXISTS"),
+  }));
+
+  const down: MigrationStep[] = plan.down.map((stmt, i) => ({
+    name: `rollback_${i + 1}`,
+    description: stmt.description,
+    sql: stmt.sql,
+    idempotent: true,
+  }));
+
+  return { id, description, up, down };
 }
 
 // ============================================================================
@@ -67,7 +99,7 @@ export function generateMigration(
   // Process materialized views (must come after tables due to dependencies)
   generateMaterializedViewMigrations(schema, diff, up, down);
 
-  const migration: Migration = {
+  const migration: GeneratedMigrationPlan = {
     name,
     timestamp,
     up,
@@ -737,7 +769,7 @@ function generateMaterializedViewChangeStatements(
 /**
  * Generate TypeScript migration file content
  */
-function generateMigrationFileContent(migration: Migration): string {
+function generateMigrationFileContent(migration: GeneratedMigrationPlan): string {
   const upStatements = migration.up
     .map((stmt) => `    // ${stmt.description}\n    await db.execute(\`${escapeBackticks(stmt.sql)}\`);`)
     .join("\n\n");

@@ -95,12 +95,15 @@ export interface DryRunResult {
 export class MigrationRunner {
   private introspector: SchemaIntrospector;
   private readonly MIGRATIONS_TABLE = "_migrations";
+  private logger: (msg: string) => void;
 
   constructor(
     private client: StarRocksClient,
-    private database: string
+    private database: string,
+    options?: { logger?: (msg: string) => void }
   ) {
     this.introspector = new SchemaIntrospector(client);
+    this.logger = options?.logger ?? (() => {});
   }
 
   /**
@@ -209,10 +212,10 @@ export class MigrationRunner {
       if (options?.dryRun) {
         // Dry run mode
         const dryRunInfo = this.dryRun(migration);
-        console.log(`\nDRY RUN - ${migration.id}:`);
-        console.log(dryRunInfo.statements.join("\n"));
+        this.logger(`\nDRY RUN - ${migration.id}:`);
+        this.logger(dryRunInfo.statements.join("\n"));
         if (dryRunInfo.warnings.length > 0) {
-          console.log("Warnings:", dryRunInfo.warnings.join("\n"));
+          this.logger(`Warnings: ${dryRunInfo.warnings.join("\n")}`);
         }
         results.push({
           success: true,
@@ -255,7 +258,7 @@ export class MigrationRunner {
 
     try {
       for (const step of migration.up) {
-        console.log(`  Executing: ${step.description}`);
+        this.logger(`  Executing: ${step.description}`);
 
         try {
           await this.client.execute(step.sql);
@@ -271,7 +274,7 @@ export class MigrationRunner {
 
           // For idempotent steps, certain errors are acceptable
           if (step.idempotent && this.isIdempotentError(stepError)) {
-            console.log(`    (Idempotent step - already applied)`);
+            this.logger(`    (Idempotent step - already applied)`);
             stepsExecuted++;
             continue;
           }
