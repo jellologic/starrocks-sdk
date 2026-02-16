@@ -70,14 +70,21 @@ function isRetryableError(error: TransactionError): boolean {
 
 /**
  * Transaction live layer implementation
+ *
+ * Uses Layer.scoped for proper resource lifecycle management.
+ * Finalizer runs when the scope is closed.
  */
-export const TransactionLive = Layer.effect(
+export const TransactionLive = Layer.scoped(
   Transaction,
   Effect.gen(function* () {
     const config = yield* StarRocksConfig
 
     const baseUrl = `http://${config.host}:${config.httpPort}/api/transaction`
     const auth = Buffer.from(`${config.user}:${config.password ?? ""}`).toString("base64")
+
+    yield* Effect.addFinalizer(() =>
+      Effect.logDebug("Transaction layer finalized")
+    )
 
     const makeHeaders = (
       label: string,

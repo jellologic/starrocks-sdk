@@ -90,14 +90,21 @@ function parseResponse(result: Record<string, unknown>): StreamLoadResult {
 
 /**
  * StreamLoad live layer implementation
+ *
+ * Uses Layer.scoped for proper resource lifecycle management.
+ * Finalizer runs when the scope is closed.
  */
-export const StreamLoadLive = Layer.effect(
+export const StreamLoadLive = Layer.scoped(
   StreamLoad,
   Effect.gen(function* () {
     const config = yield* StarRocksConfig
 
     const baseUrl = `http://${config.host}:${config.httpPort}`
     const auth = Buffer.from(`${config.user}:${config.password ?? ""}`).toString("base64")
+
+    yield* Effect.addFinalizer(() =>
+      Effect.logDebug("StreamLoad layer finalized")
+    )
 
     /**
      * Internal function to perform a single load attempt
