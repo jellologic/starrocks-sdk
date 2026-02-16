@@ -71,12 +71,14 @@ program.pipe(
 )
 ```
 
+## Commit Policy
+
+- **Do NOT include `Co-Authored-By` lines** in commit messages. No AI attribution in commits.
+
 ## Testing
 
 ```bash
-bun run db:up        # Start StarRocks container (port 19030)
-bun test             # Run integration tests
-bun run db:down      # Stop container
+bun test             # Auto-starts a StarRocks Docker container, runs tests, cleans up
 ```
 
 ## Critical Files

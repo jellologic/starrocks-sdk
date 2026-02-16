@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createStarRocksClient, createStreamLoadClient, type StarRocksClient, type StreamLoadClient } from "../src";
-import { testConfig, TEST_DATABASE } from "../src/test-config";
+import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config";
 import type { TableOptions } from "../src/types";
 
 describe("StarRocks Stream Load", () => {
@@ -12,10 +12,10 @@ describe("StarRocks Stream Load", () => {
     await client.createDatabase(TEST_DATABASE);
     await client.useDatabase(TEST_DATABASE);
 
-    // Create stream load client with FE HTTP port (mapped to 18030)
+    // Create stream load client with BE HTTP port directly
     streamLoader = createStreamLoadClient({
       host: testConfig.host,
-      httpPort: 18030,
+      httpPort: beHttpPort,
       user: testConfig.user,
       password: testConfig.password,
     });

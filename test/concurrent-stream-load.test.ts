@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createStarRocksClient, createStreamLoadClient, type StarRocksClient, type StreamLoadClient } from "../src";
-import { testConfig, TEST_DATABASE } from "../src/test-config";
+import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config";
 
 /**
  * Battle Test: Concurrent Stream Load Operations
@@ -27,7 +27,7 @@ describe("StarRocks Concurrent Stream Load", () => {
 
     streamLoader = createStreamLoadClient({
       host: testConfig.host,
-      httpPort: 18030,
+      httpPort: beHttpPort,
       user: testConfig.user,
       password: testConfig.password,
     });
@@ -501,7 +501,7 @@ describe("StarRocks Concurrent Stream Load", () => {
       const clients = Array.from({ length: 3 }, () =>
         createStreamLoadClient({
           host: testConfig.host,
-          httpPort: 18030,
+          httpPort: beHttpPort,
           user: testConfig.user,
           password: testConfig.password,
         })

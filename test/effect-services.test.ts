@@ -14,16 +14,16 @@ import {
   TransactionError,
 } from "../src"
 import { createStarRocksClient } from "../src/client"
-import { testConfig, TEST_DATABASE } from "../src/test-config"
+import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config"
 
 /**
  * Configuration layers for testing
- * Both StreamLoad and Transaction use BE HTTP port (18040) directly
+ * Both StreamLoad and Transaction use BE HTTP port directly
  * to avoid FE redirect issues in Docker (FE redirects to internal 8040 which isn't accessible)
  */
 const streamLoadConfigLayer = StarRocksConfigLive({
   host: testConfig.host,
-  httpPort: 18040, // BE HTTP port - use directly to avoid FE redirect
+  httpPort: beHttpPort,
   mysqlPort: testConfig.port,
   user: testConfig.user,
   password: testConfig.password ?? "",
@@ -31,7 +31,7 @@ const streamLoadConfigLayer = StarRocksConfigLive({
 
 const transactionConfigLayer = StarRocksConfigLive({
   host: testConfig.host,
-  httpPort: 18040, // BE HTTP port - same as StreamLoad
+  httpPort: beHttpPort,
   mysqlPort: testConfig.port,
   user: testConfig.user,
   password: testConfig.password ?? "",

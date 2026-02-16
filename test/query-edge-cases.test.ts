@@ -1,6 +1,6 @@
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import { createStarRocksClient, createStreamLoadClient, type StarRocksClient, type StreamLoadClient } from "../src";
-import { testConfig, TEST_DATABASE } from "../src/test-config";
+import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config";
 
 /**
  * Battle Test: Query Edge Cases
@@ -29,7 +29,7 @@ describe("StarRocks Query Edge Cases", () => {
 
     streamLoader = createStreamLoadClient({
       host: testConfig.host,
-      httpPort: 18030,
+      httpPort: beHttpPort,
       user: testConfig.user,
       password: testConfig.password,
     });

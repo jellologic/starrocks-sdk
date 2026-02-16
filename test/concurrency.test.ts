@@ -7,7 +7,7 @@
 
 import { describe, test, expect, beforeAll, afterAll } from "bun:test";
 import mysql from "mysql2/promise";
-import { testConfig, TEST_DATABASE } from "../src/test-config";
+import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config";
 import { createStarRocksClient, createStreamLoadClient, type StarRocksClient, type StreamLoadClient } from "../src";
 import {
   createKnexDatabase,
@@ -72,7 +72,7 @@ describe("Concurrency Tests", () => {
     // Create stream load client
     streamLoader = createStreamLoadClient({
       host: testConfig.host,
-      httpPort: 18030,
+      httpPort: beHttpPort,
       user: testConfig.user,
       password: testConfig.password,
     });

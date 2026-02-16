@@ -6,7 +6,7 @@ import {
   type StreamLoadTransactionClient,
   LegacyTransactionError,
 } from "../src";
-import { testConfig, TEST_DATABASE } from "../src/test-config";
+import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config";
 import type { TableOptions } from "../src/types";
 
 /**
@@ -34,13 +34,12 @@ describe("StarRocks 2PC Transactions", () => {
     await client.createDatabase(TEST_DATABASE);
     await client.useDatabase(TEST_DATABASE);
 
-    // Create transaction client with BE HTTP port (18040)
-    // Note: The FE (18030) redirects transaction requests to BE (8040),
-    // but the redirect uses internal port 8040 which is not accessible from outside.
-    // We bypass this by going directly to BE on external port 18040.
+    // Create transaction client with BE HTTP port directly.
+    // The FE redirects transaction requests to the container-internal BE port,
+    // so we bypass by going directly to the mapped BE HTTP port.
     txClient = createStreamLoadTransactionClient({
       host: testConfig.host,
-      httpPort: 18040,
+      httpPort: beHttpPort,
       user: testConfig.user,
       password: testConfig.password,
     });

@@ -6,7 +6,7 @@ import {
   type StarRocksClient,
   type StreamLoadTransactionClient,
 } from "../src";
-import { testConfig, TEST_DATABASE } from "../src/test-config";
+import { testConfig, TEST_DATABASE, beHttpPort } from "../src/test-config";
 import type { TableOptions } from "../src/types";
 
 describe("StarRocks Stream Load Transaction", () => {
@@ -19,11 +19,11 @@ describe("StarRocks Stream Load Transaction", () => {
     await client.createDatabase(TEST_DATABASE);
     await client.useDatabase(TEST_DATABASE);
 
-    // Create transaction client with BE HTTP port (mapped to 18040)
-    // Note: Using BE port directly avoids redirect issues in Docker environments
+    // Create transaction client with BE HTTP port directly
+    // (avoids FE→BE redirect issues in Docker environments)
     txnClient = createStreamLoadTransactionClient({
       host: testConfig.host,
-      httpPort: 18040,
+      httpPort: beHttpPort,
       user: testConfig.user,
       password: testConfig.password,
     });

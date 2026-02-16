@@ -1,22 +1,59 @@
 {
   "name": "@jellologic/starrocks-sdk",
+  "version": "0.1.0",
   "type": "module",
-  "exports": {
-    ".": { "default": "./src/index.ts" },
-    "./*": { "default": "./src/*.ts" },
-    "./schema": { "default": "./src/schema/index.ts" }
+  "description": "Type-safe StarRocks client with Effect.ts integration — DDL DSL, Stream Load, 2PC transactions, and materialized view management",
+  "author": "jellologic",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jellologic/starrocks-sdk.git"
   },
+  "homepage": "https://github.com/jellologic/starrocks-sdk#readme",
+  "bugs": {
+    "url": "https://github.com/jellologic/starrocks-sdk/issues"
+  },
+  "keywords": [
+    "starrocks",
+    "effect",
+    "effect-ts",
+    "drizzle",
+    "stream-load",
+    "database",
+    "ddl",
+    "materialized-view"
+  ],
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./*": {
+      "types": "./dist/*.d.ts",
+      "default": "./dist/*.js"
+    },
+    "./schema": {
+      "types": "./dist/schema/index.d.ts",
+      "default": "./dist/schema/index.js"
+    }
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "clean": "rm -rf dist",
+    "prepublishOnly": "bun run clean && bun run build",
     "test": "bun test",
     "test:integration": "bun test --timeout 30000",
-    "db:up": "docker compose up -d",
-    "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f",
     "docs:pull": "rm -rf .starrocks-docs && mkdir -p .starrocks-docs && cd .starrocks-docs && git init && git remote add origin https://github.com/StarRocks/starrocks.git && git sparse-checkout set docs/en && git pull origin main --depth 1 && echo 'StarRocks docs pulled to .starrocks-docs/docs/en'"
   },
   "dependencies": {
     "@effect/schema": "^0.75.5",
-    "dotenv": "^17.2.2",
     "drizzle-orm": "^0.45.1",
     "effect": "^3.19.15",
     "mysql2": "^3.14.0",
@@ -24,6 +61,8 @@
   },
   "devDependencies": {
     "@types/bun": "latest",
+    "@types/node": "^25.2.3",
+    "dotenv": "^17.2.2",
     "drizzle-kit": "^0.31.8",
     "typescript": "^5"
   }
