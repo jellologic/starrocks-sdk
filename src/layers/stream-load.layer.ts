@@ -74,14 +74,22 @@ function parseResponse(result: Record<string, unknown>): StreamLoadResult {
     ? (rawStatus as StreamLoadResult["status"])
     : "Fail"
 
+  const numberLoadedRows = typeof result.NumberLoadedRows === "number" ? result.NumberLoadedRows : 0
+  const numberFilteredRows = typeof result.NumberFilteredRows === "number" ? result.NumberFilteredRows : 0
+  const numberUnselectedRows = typeof result.NumberUnselectedRows === "number" ? result.NumberUnselectedRows : 0
+  const numberTotalRows = typeof result.NumberTotalRows === "number"
+    ? result.NumberTotalRows
+    : numberLoadedRows + numberFilteredRows + numberUnselectedRows
+
   return {
     txnId: typeof result.TxnId === "number" ? result.TxnId : 0,
     label: typeof result.Label === "string" ? result.Label : "",
     status,
     message: typeof result.Message === "string" ? result.Message : "",
-    numberLoadedRows: typeof result.NumberLoadedRows === "number" ? result.NumberLoadedRows : 0,
-    numberFilteredRows: typeof result.NumberFilteredRows === "number" ? result.NumberFilteredRows : 0,
-    numberUnselectedRows: typeof result.NumberUnselectedRows === "number" ? result.NumberUnselectedRows : 0,
+    numberLoadedRows,
+    numberFilteredRows,
+    numberUnselectedRows,
+    numberTotalRows,
     loadBytes: typeof result.LoadBytes === "number" ? result.LoadBytes : 0,
     loadTimeMs: typeof result.LoadTimeMs === "number" ? result.LoadTimeMs : 0,
     errorUrl: typeof result.ErrorURL === "string" ? result.ErrorURL : undefined,

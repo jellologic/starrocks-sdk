@@ -22,6 +22,8 @@ export interface StreamLoadResult {
   readonly numberUnselectedRows: number
   /** Total bytes loaded */
   readonly loadBytes: number
+  /** Total number of rows (loaded + filtered + unselected) */
+  readonly numberTotalRows: number
   /** Total load time in milliseconds */
   readonly loadTimeMs: number
   /** Error URL for debugging (if failed) */
