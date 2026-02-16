@@ -255,10 +255,10 @@ export class QueryBuilder<TResult = unknown> {
    * GROUP BY
    */
   groupBy(
-    ...columns: Array<ColumnRef<any, any, any>>
+    ...columns: Array<ColumnRef<any, any, any> | Expression<unknown>>
   ): QueryBuilder<TResult> {
     const qb = this.clone();
-    qb._groupBy = columns.map((c) => c.fullName);
+    qb._groupBy = columns.map((c) => "fullName" in c ? c.fullName : c.sql);
     return qb;
   }
 
@@ -278,7 +278,8 @@ export class QueryBuilder<TResult = unknown> {
     ...specs: Array<
       | ColumnRef<any, any, any>
       | AggregateExpression<any>
-      | { column: ColumnRef<any, any, any> | AggregateExpression<any>; direction: OrderDirection }
+      | Expression<unknown>
+      | { column: ColumnRef<any, any, any> | AggregateExpression<any> | Expression<unknown>; direction: OrderDirection }
     >
   ): QueryBuilder<TResult> {
     const qb = this.clone();
@@ -528,15 +529,15 @@ export class QueryBuilder<TResult = unknown> {
 
 /** Ascending order */
 export function asc<T>(
-  column: ColumnRef<T, any, any> | AggregateExpression<T>
-): { column: ColumnRef<T, any, any> | AggregateExpression<T>; direction: OrderDirection } {
+  column: ColumnRef<T, any, any> | AggregateExpression<T> | Expression<T>
+): { column: ColumnRef<T, any, any> | AggregateExpression<T> | Expression<T>; direction: OrderDirection } {
   return { column, direction: "ASC" };
 }
 
 /** Descending order */
 export function desc<T>(
-  column: ColumnRef<T, any, any> | AggregateExpression<T>
-): { column: ColumnRef<T, any, any> | AggregateExpression<T>; direction: OrderDirection } {
+  column: ColumnRef<T, any, any> | AggregateExpression<T> | Expression<T>
+): { column: ColumnRef<T, any, any> | AggregateExpression<T> | Expression<T>; direction: OrderDirection } {
   return { column, direction: "DESC" };
 }
 

@@ -12,6 +12,9 @@ import {
   count,
   sum,
   avg,
+  sql,
+  asc,
+  desc,
 } from "../src/schema/index";
 
 const events = starrocksTable("events", {
@@ -254,5 +257,54 @@ describe("Complex queries", () => {
     expect(sql).toContain("OFFSET 10");
     expect(values).toContain(0);
     expect(values).toContain(3);
+  });
+});
+
+describe("Expression support in groupBy / orderBy (#7)", () => {
+  test("groupBy accepts Expression", () => {
+    const qb = new QueryBuilder()
+      .select({
+        bucket: sql`FLOOR(\`timestamp\` / 300000) * 300000`,
+        volume: sql`SUM(volume)`,
+      })
+      .from(events)
+      .groupBy(sql`FLOOR(\`timestamp\` / 300000) * 300000`);
+
+    const { sql: query } = qb.toSQL();
+    expect(query).toContain("GROUP BY FLOOR(`timestamp` / 300000) * 300000");
+  });
+
+  test("groupBy accepts mixed ColumnRef and Expression", () => {
+    const qb = new QueryBuilder()
+      .select({
+        venueId: events.venueId,
+        bucket: sql`FLOOR(price / 10)`,
+        total: sql`COUNT(*)`,
+      })
+      .from(events)
+      .groupBy(events.venueId, sql`FLOOR(price / 10)`);
+
+    const { sql: query } = qb.toSQL();
+    expect(query).toContain("GROUP BY events.venue_id, FLOOR(price / 10)");
+  });
+
+  test("orderBy accepts Expression", () => {
+    const qb = new QueryBuilder()
+      .select({ id: events.id })
+      .from(events)
+      .orderBy(sql`RAND()`);
+
+    const { sql: query } = qb.toSQL();
+    expect(query).toContain("ORDER BY RAND() ASC");
+  });
+
+  test("asc/desc helpers accept Expression", () => {
+    const qb = new QueryBuilder()
+      .select({ id: events.id })
+      .from(events)
+      .orderBy(desc(sql`FLOOR(price / 10)`), asc(sql`id`));
+
+    const { sql: query } = qb.toSQL();
+    expect(query).toContain("ORDER BY FLOOR(price / 10) DESC, id ASC");
   });
 });
