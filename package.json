@@ -37,7 +37,14 @@
     "./schema": {
       "types": "./dist/schema/index.d.ts",
       "default": "./dist/schema/index.js"
+    },
+    "./drizzle-schema": {
+      "types": "./dist/drizzle-schema.d.ts",
+      "default": "./dist/drizzle-schema.js"
     }
+  },
+  "publishConfig": {
+    "registry": "https://npm.pkg.github.com"
   },
   "files": [
     "dist",
@@ -47,6 +54,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
+    "prepare": "tsc -p tsconfig.build.json 2>/dev/null || true",
     "prepublishOnly": "bun run clean && bun run build",
     "test": "bun test",
     "test:integration": "bun test --timeout 30000",
