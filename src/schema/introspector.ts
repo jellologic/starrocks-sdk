@@ -20,6 +20,14 @@ export interface IntrospectedColumn {
   comment: string | null;
 }
 
+export interface IntrospectedIndex {
+  name: string;
+  type: "BITMAP" | "GIN" | "VECTOR";
+  columns: string[];
+  properties: Record<string, string>;
+  comment: string | null;
+}
+
 export interface IntrospectedTable {
   name: string;
   type: "table";
@@ -32,6 +40,7 @@ export interface IntrospectedTable {
   partitionType: "RANGE" | "LIST" | "EXPRESSION" | null;
   partitionColumn: string | null;
   properties: Record<string, string>;
+  indexes: IntrospectedIndex[];
   comment: string | null;
 }
 
@@ -196,11 +205,12 @@ async function introspectAllTables(
     let partitionType: IntrospectedTable["partitionType"] = null;
     let partitionColumn: string | null = null;
     const properties: Record<string, string> = {};
+    let createSql = "";
 
     try {
       const [createTableRows] = await pool.query<any[]>(`SHOW CREATE TABLE \`${database}\`.\`${name}\``);
       if (createTableRows.length > 0) {
-        const createSql = createTableRows[0]["Create Table"] || "";
+        createSql = createTableRows[0]["Create Table"] || "";
 
         // Parse key type
         if (createSql.includes("PRIMARY KEY")) {
@@ -235,28 +245,31 @@ async function introspectAllTables(
         const rangeMatch = createSql.match(/PARTITION BY RANGE\s*\(([^)]+)\)/i);
         if (rangeMatch) {
           partitionType = "RANGE";
-          partitionColumn = rangeMatch[1].trim().replace(/`/g, "");
+          partitionColumn = rangeMatch[1]!.trim().replace(/`/g, "");
         } else {
           const listMatch = createSql.match(/PARTITION BY LIST\s*\(([^)]+)\)/i);
           if (listMatch) {
             partitionType = "LIST";
-            partitionColumn = listMatch[1].trim().replace(/`/g, "");
+            partitionColumn = listMatch[1]!.trim().replace(/`/g, "");
           }
         }
 
         // Parse properties
         const propsMatch = createSql.match(/PROPERTIES\s*\(([\s\S]*?)\)/i);
         if (propsMatch) {
-          const propsStr = propsMatch[1];
+          const propsStr = propsMatch[1]!;
           const propMatches = propsStr.matchAll(/"([^"]+)"\s*=\s*"([^"]*)"/g);
           for (const m of propMatches) {
-            properties[m[1]] = m[2];
+            properties[m[1]!] = m[2]!;
           }
         }
       }
     } catch {
       // Ignore errors from SHOW CREATE TABLE
     }
+
+    // Parse indexes from SHOW INDEX + fallback to SHOW CREATE TABLE for VECTOR params
+    const indexes = await introspectTableIndexes(pool, database, name, createSql);
 
     tables.push({
       name,
@@ -270,6 +283,7 @@ async function introspectAllTables(
       partitionType,
       partitionColumn,
       properties,
+      indexes,
       comment: tableRow.TABLE_COMMENT || null,
     });
   }
@@ -284,6 +298,78 @@ function parseKeyColumns(sql: string, keyType: string): string[] {
     return match[1].split(",").map((c: string) => c.trim().replace(/`/g, ""));
   }
   return [];
+}
+
+// ============================================================================
+// Index Introspection
+// ============================================================================
+
+async function introspectTableIndexes(
+  pool: Pool,
+  database: string,
+  tableName: string,
+  createSql: string
+): Promise<IntrospectedIndex[]> {
+  const indexes: IntrospectedIndex[] = [];
+
+  try {
+    const [indexRows] = await pool.query<any[]>(`SHOW INDEX FROM \`${database}\`.\`${tableName}\``);
+
+    // Group by index name (multi-column indexes have multiple rows)
+    const indexMap = new Map<string, { columns: string[]; type: string; comment: string | null }>();
+
+    for (const row of indexRows) {
+      const indexName = row.Key_name || row.INDEX_NAME;
+      const columnName = row.Column_name || row.COLUMN_NAME;
+      const indexType = row.Index_type || row.INDEX_TYPE || "";
+      const comment = row.Comment || row.COMMENT || null;
+
+      // Skip the primary/key index entries
+      if (!indexName || indexName === "PRIMARY" || !indexType) continue;
+
+      const normalizedType = indexType.toUpperCase();
+      // Only track BITMAP, GIN, and VECTOR indexes
+      if (normalizedType !== "BITMAP" && normalizedType !== "GIN" && normalizedType !== "VECTOR") continue;
+
+      if (!indexMap.has(indexName)) {
+        indexMap.set(indexName, { columns: [], type: normalizedType, comment });
+      }
+      indexMap.get(indexName)!.columns.push(columnName);
+    }
+
+    for (const [indexName, info] of indexMap) {
+      const properties: Record<string, string> = {};
+
+      // For VECTOR indexes, parse properties from CREATE TABLE SQL
+      if (info.type === "VECTOR" && createSql) {
+        const vectorRegex = new RegExp(
+          `INDEX\\s+\`?${indexName}\`?\\s+.*?USING\\s+VECTOR\\s*\\(([^)]+)\\)`,
+          "i"
+        );
+        const match = createSql.match(vectorRegex);
+        if (match?.[1]) {
+          const propMatches = match[1].matchAll(/"([^"]+)"\s*=\s*"([^"]*)"/g);
+          for (const m of propMatches) {
+            if (m[1] !== undefined && m[2] !== undefined) {
+              properties[m[1]] = m[2];
+            }
+          }
+        }
+      }
+
+      indexes.push({
+        name: indexName,
+        type: info.type as IntrospectedIndex["type"],
+        columns: info.columns,
+        properties,
+        comment: info.comment,
+      });
+    }
+  } catch {
+    // Ignore errors from SHOW INDEX
+  }
+
+  return indexes;
 }
 
 // ============================================================================

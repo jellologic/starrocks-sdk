@@ -6,6 +6,7 @@
 
 import type { Column, Columns, InferSelectType, InferInsertType } from "./columns";
 import {
+  escapeString,
   escapeDoubleQuoted,
   validatePartitionName,
   formatDefaultValue,
@@ -201,6 +202,164 @@ export interface TableProperties {
 }
 
 // ============================================================================
+// Index Types
+// ============================================================================
+
+/** Bitmap index for low/medium cardinality columns */
+export interface BitmapIndexConfig {
+  type: "BITMAP";
+  name: string;
+  column: string;
+  comment?: string;
+}
+
+/** GIN (inverted) index for full-text search */
+export interface GinIndexConfig {
+  type: "GIN";
+  name: string;
+  columns: string[];
+  comment?: string;
+}
+
+/** Vector index type */
+export type VectorIndexType = "HNSW" | "IVFPQ";
+
+/** Vector index metric */
+export type VectorIndexMetric = "L2_DISTANCE" | "COSINE_SIMILARITY";
+
+/** Vector index for approximate nearest neighbor search */
+export interface VectorIndexConfig {
+  type: "VECTOR";
+  name: string;
+  column: string;
+  indexType: VectorIndexType;
+  metric: VectorIndexMetric;
+  dimension: number;
+  params?: {
+    M?: number;
+    efConstruction?: number;
+    nlist?: number;
+    nbits?: number;
+    nprobe?: number;
+  };
+  comment?: string;
+}
+
+/** Union of all index config types */
+export type IndexConfig = BitmapIndexConfig | GinIndexConfig | VectorIndexConfig;
+
+// ============================================================================
+// Index Builders
+// ============================================================================
+
+/** Create a bitmap index definition */
+export function bitmapIndex(
+  name: string,
+  column: Column<any, any, any, any>,
+  opts?: { comment?: string }
+): BitmapIndexConfig {
+  return {
+    type: "BITMAP",
+    name,
+    column: column.name,
+    ...opts,
+  };
+}
+
+/** Create a GIN (inverted) index definition */
+export function ginIndex(
+  name: string,
+  columns: Column<any, any, any, any>[],
+  opts?: { comment?: string }
+): GinIndexConfig {
+  return {
+    type: "GIN",
+    name,
+    columns: columns.map((c) => c.name),
+    ...opts,
+  };
+}
+
+/** Create a vector index definition */
+export function vectorIndex(
+  name: string,
+  column: Column<any, any, any, any>,
+  config: {
+    indexType: VectorIndexType;
+    metric: VectorIndexMetric;
+    dimension: number;
+    params?: VectorIndexConfig["params"];
+    comment?: string;
+  }
+): VectorIndexConfig {
+  return {
+    type: "VECTOR",
+    name,
+    column: column.name,
+    indexType: config.indexType,
+    metric: config.metric,
+    dimension: config.dimension,
+    params: config.params,
+    comment: config.comment,
+  };
+}
+
+// ============================================================================
+// Index SQL Generation
+// ============================================================================
+
+/** Generate CREATE INDEX SQL for an index config */
+export function generateCreateIndexSQL(tableName: string, index: IndexConfig): string {
+  const quotedTable = quoteIdentifier(tableName);
+
+  switch (index.type) {
+    case "BITMAP": {
+      let sql = `CREATE INDEX ${quoteIdentifier(index.name)} ON ${quotedTable} (${quoteIdentifier(index.column)}) USING BITMAP`;
+      if (index.comment) {
+        sql += ` COMMENT '${escapeString(index.comment)}'`;
+      }
+      return sql;
+    }
+    case "GIN": {
+      const cols = index.columns.map(quoteIdentifier).join(", ");
+      let sql = `CREATE INDEX ${quoteIdentifier(index.name)} ON ${quotedTable} (${cols}) USING GIN`;
+      if (index.comment) {
+        sql += ` COMMENT '${escapeString(index.comment)}'`;
+      }
+      return sql;
+    }
+    case "VECTOR": {
+      const props: string[] = [
+        `"index_type" = "${index.indexType}"`,
+        `"dim" = "${index.dimension}"`,
+        `"metric_type" = "${index.metric}"`,
+      ];
+
+      if (index.params) {
+        if (index.indexType === "HNSW") {
+          if (index.params.M !== undefined) props.push(`"M" = "${index.params.M}"`);
+          if (index.params.efConstruction !== undefined) props.push(`"efconstruction" = "${index.params.efConstruction}"`);
+        } else if (index.indexType === "IVFPQ") {
+          if (index.params.nlist !== undefined) props.push(`"nlist" = "${index.params.nlist}"`);
+          if (index.params.nbits !== undefined) props.push(`"nbits" = "${index.params.nbits}"`);
+        }
+      }
+
+      let sql = `CREATE INDEX ${quoteIdentifier(index.name)} ON ${quotedTable} (${quoteIdentifier(index.column)}) USING VECTOR (${props.join(", ")})`;
+      if (index.comment) {
+        sql += ` COMMENT '${escapeString(index.comment)}'`;
+      }
+      return sql;
+    }
+  }
+}
+
+/** Generate DROP INDEX SQL */
+export function generateDropIndexSQL(tableName: string, indexName: string): string {
+  return `DROP INDEX ${quoteIdentifier(indexName)} ON ${quoteIdentifier(tableName)}`;
+}
+
+// ============================================================================
 // Table Config
 // ============================================================================
 
@@ -209,6 +368,7 @@ export interface TableConfig {
   distribution?: DistributionConfig;
   partition?: PartitionConfig;
   properties?: TableProperties;
+  indexes?: IndexConfig[];
 }
 
 // ============================================================================
@@ -337,6 +497,7 @@ export function starrocksTable<
 const KEY_TYPES: ReadonlySet<string> = new Set(["PRIMARY", "DUPLICATE", "AGGREGATE", "UNIQUE"]);
 const DIST_TYPES: ReadonlySet<string> = new Set(["HASH", "RANDOM"]);
 const PART_TYPES: ReadonlySet<string> = new Set(["RANGE", "LIST", "EXPRESSION"]);
+const INDEX_TYPES: ReadonlySet<string> = new Set(["BITMAP", "GIN", "VECTOR"]);
 
 /**
  * Normalize a config callback result into the canonical TableConfig shape.
@@ -376,6 +537,26 @@ function normalizeTableConfig(raw: Record<string, unknown>): TableConfig {
       PART_TYPES.has((v as { type: string }).type)
     ) {
       result.partition = v as PartitionConfig;
+      continue;
+    }
+
+    // Check for IndexConfig: { type: "BITMAP"|"GIN"|"VECTOR", name: string }
+    if (
+      "type" in v &&
+      "name" in v &&
+      INDEX_TYPES.has((v as { type: string }).type)
+    ) {
+      if (!result.indexes) result.indexes = [];
+      result.indexes.push(v as IndexConfig);
+      continue;
+    }
+
+    // Check for IndexConfig array
+    if (Array.isArray(v) && v.length > 0 && v.every((item) =>
+      typeof item === "object" && item !== null && "type" in item && "name" in item &&
+      INDEX_TYPES.has((item as { type: string }).type)
+    )) {
+      result.indexes = [...(result.indexes ?? []), ...(v as IndexConfig[])];
       continue;
     }
 

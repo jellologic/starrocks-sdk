@@ -94,6 +94,7 @@ export class QueryBuilder<TResult = unknown> {
   private _pool?: Pool;
   private _ctes: CTEDef[] = [];
   private _setOperations: SetOperationDef[] = [];
+  private _distinct: boolean = false;
 
   constructor(pool?: Pool) {
     this._pool = pool;
@@ -118,6 +119,7 @@ export class QueryBuilder<TResult = unknown> {
     qb._offset = this._offset;
     qb._ctes = [...this._ctes];
     qb._setOperations = [...this._setOperations];
+    qb._distinct = this._distinct;
     return qb;
   }
 
@@ -138,6 +140,16 @@ export class QueryBuilder<TResult = unknown> {
     qb._offset = this._offset;
     qb._ctes = [...this._ctes];
     qb._setOperations = [...this._setOperations];
+    qb._distinct = this._distinct;
+    return qb;
+  }
+
+  /**
+   * SELECT DISTINCT — remove duplicate rows from the result
+   */
+  distinct(): QueryBuilder<TResult> {
+    const qb = this.clone();
+    qb._distinct = true;
     return qb;
   }
 
@@ -162,6 +174,7 @@ export class QueryBuilder<TResult = unknown> {
     qb._offset = this._offset;
     qb._ctes = [...this._ctes];
     qb._setOperations = [...this._setOperations];
+    qb._distinct = this._distinct;
 
     if (source._type === "subquery") {
       qb._fromSubquery = {
@@ -386,8 +399,10 @@ export class QueryBuilder<TResult = unknown> {
     }
 
     // SELECT
+    const selectKeyword = this._distinct ? "SELECT DISTINCT" : "SELECT";
+
     if (this._select === "*") {
-      parts.push("SELECT *");
+      parts.push(`${selectKeyword} *`);
     } else {
       const selectParts: string[] = [];
       for (const [alias, field] of Object.entries(this._select)) {
@@ -408,7 +423,7 @@ export class QueryBuilder<TResult = unknown> {
           values.push(...field.values);
         }
       }
-      parts.push(`SELECT ${selectParts.join(", ")}`);
+      parts.push(`${selectKeyword} ${selectParts.join(", ")}`);
     }
 
     // FROM
@@ -502,6 +517,7 @@ export class QueryBuilder<TResult = unknown> {
     qb._offset = this._offset;
     qb._ctes = [...this._ctes];
     qb._setOperations = [...this._setOperations];
+    qb._distinct = this._distinct;
     return qb;
   }
 }

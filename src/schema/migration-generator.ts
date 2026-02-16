@@ -5,9 +5,9 @@
  */
 
 import type { Schema } from "./define-schema";
-import type { SchemaDiff, TableChange, ColumnChange, ViewChange, MaterializedViewChange } from "./differ";
+import type { SchemaDiff, TableChange, ColumnChange, ViewChange, MaterializedViewChange, IndexChange } from "./differ";
 import type { IntrospectedSchema } from "./introspector";
-import { generateCreateTableSQL } from "./table";
+import { generateCreateTableSQL, generateCreateIndexSQL, generateDropIndexSQL } from "./table";
 import { generateCreateViewSQL, generateDropViewSQL, generateReplaceViewSQL } from "./view";
 import { generateCreateMaterializedViewSQL, generateDropMaterializedViewSQL, generateAlterRefreshSQL } from "./materialized-view";
 import { formatDefaultValue } from "./sql-utils";
@@ -20,7 +20,7 @@ export interface MigrationStatement {
   sql: string;
   description: string;
   type: "create" | "drop" | "alter";
-  object: "table" | "view" | "materialized_view" | "column";
+  object: "table" | "view" | "materialized_view" | "column" | "index";
   objectName: string;
 }
 
@@ -103,6 +103,19 @@ function generateTableMigrations(
         objectName: tableName,
       });
 
+      // Create indexes for new tables
+      if (table.config.indexes) {
+        for (const idx of table.config.indexes) {
+          up.push({
+            sql: generateCreateIndexSQL(tableName, idx),
+            description: `Create ${idx.type} index '${idx.name}' on '${tableName}'`,
+            type: "create",
+            object: "index",
+            objectName: `${tableName}.${idx.name}`,
+          });
+        }
+      }
+
       down.push({
         sql: `DROP TABLE IF EXISTS ${tableName}`,
         description: `Drop table '${tableName}'`,
@@ -159,6 +172,13 @@ function generateTableAlterStatements(
   if (change.columnChanges) {
     for (const colChange of change.columnChanges) {
       generateColumnAlterStatements(tableName, colChange, up, down);
+    }
+  }
+
+  // Index changes
+  if (change.indexChanges) {
+    for (const indexChange of change.indexChanges) {
+      generateIndexAlterStatements(tableName, indexChange, up, down);
     }
   }
 
@@ -373,6 +393,141 @@ function generateColumnAlterStatements(
       });
       break;
     }
+  }
+}
+
+// ============================================================================
+// Index Migrations
+// ============================================================================
+
+function generateIndexAlterStatements(
+  tableName: string,
+  change: IndexChange,
+  up: MigrationStatement[],
+  down: MigrationStatement[]
+): void {
+  switch (change.type) {
+    case "add": {
+      const newIdx = change.newIndex!;
+      // Reconstruct IndexConfig from IntrospectedIndex for SQL generation
+      const idxConfig = introspectedToIndexConfig(newIdx);
+      if (idxConfig) {
+        up.push({
+          sql: generateCreateIndexSQL(tableName, idxConfig),
+          description: `Create ${newIdx.type} index '${change.indexName}' on '${tableName}'`,
+          type: "create",
+          object: "index",
+          objectName: `${tableName}.${change.indexName}`,
+        });
+
+        down.push({
+          sql: generateDropIndexSQL(tableName, change.indexName),
+          description: `Drop index '${change.indexName}' from '${tableName}'`,
+          type: "drop",
+          object: "index",
+          objectName: `${tableName}.${change.indexName}`,
+        });
+      }
+      break;
+    }
+
+    case "remove": {
+      up.push({
+        sql: generateDropIndexSQL(tableName, change.indexName),
+        description: `Drop ${change.indexType} index '${change.indexName}' from '${tableName}'`,
+        type: "drop",
+        object: "index",
+        objectName: `${tableName}.${change.indexName}`,
+      });
+
+      down.push({
+        sql: `-- Cannot auto-recreate dropped index '${change.indexName}'. Manual intervention required.`,
+        description: `Recreate index '${change.indexName}' on '${tableName}'`,
+        type: "create",
+        object: "index",
+        objectName: `${tableName}.${change.indexName}`,
+      });
+      break;
+    }
+
+    case "modify": {
+      const newIdx = change.newIndex!;
+      const idxConfig = introspectedToIndexConfig(newIdx);
+
+      // DROP + CREATE for modifications
+      up.push({
+        sql: generateDropIndexSQL(tableName, change.indexName),
+        description: `Drop index '${change.indexName}' from '${tableName}' for modification`,
+        type: "drop",
+        object: "index",
+        objectName: `${tableName}.${change.indexName}`,
+      });
+
+      if (idxConfig) {
+        up.push({
+          sql: generateCreateIndexSQL(tableName, idxConfig),
+          description: `Recreate ${newIdx.type} index '${change.indexName}' on '${tableName}': ${change.changes?.join(", ")}`,
+          type: "create",
+          object: "index",
+          objectName: `${tableName}.${change.indexName}`,
+        });
+      }
+
+      down.push({
+        sql: `-- Index '${change.indexName}' on '${tableName}' was modified. Manual revert may be required.`,
+        description: `Revert index '${change.indexName}' on '${tableName}'`,
+        type: "alter",
+        object: "index",
+        objectName: `${tableName}.${change.indexName}`,
+      });
+      break;
+    }
+  }
+}
+
+import type { IndexConfig } from "./table";
+import type { IntrospectedIndex } from "./introspector";
+
+function introspectedToIndexConfig(idx: IntrospectedIndex): IndexConfig | null {
+  switch (idx.type) {
+    case "BITMAP":
+      return {
+        type: "BITMAP",
+        name: idx.name,
+        column: idx.columns[0] ?? "",
+        comment: idx.comment ?? undefined,
+      };
+    case "GIN":
+      return {
+        type: "GIN",
+        name: idx.name,
+        columns: idx.columns,
+        comment: idx.comment ?? undefined,
+      };
+    case "VECTOR": {
+      const indexType = (idx.properties["index_type"] || "HNSW") as "HNSW" | "IVFPQ";
+      const metric = (idx.properties["metric_type"] || "L2_DISTANCE") as "L2_DISTANCE" | "COSINE_SIMILARITY";
+      const dimension = parseInt(idx.properties["dim"] || "0", 10);
+
+      const params: Record<string, number> = {};
+      if (idx.properties["M"]) params.M = parseInt(idx.properties["M"], 10);
+      if (idx.properties["efconstruction"]) params.efConstruction = parseInt(idx.properties["efconstruction"], 10);
+      if (idx.properties["nlist"]) params.nlist = parseInt(idx.properties["nlist"], 10);
+      if (idx.properties["nbits"]) params.nbits = parseInt(idx.properties["nbits"], 10);
+
+      return {
+        type: "VECTOR",
+        name: idx.name,
+        column: idx.columns[0] ?? "",
+        indexType,
+        metric,
+        dimension,
+        params: Object.keys(params).length > 0 ? params : undefined,
+        comment: idx.comment ?? undefined,
+      };
+    }
+    default:
+      return null;
   }
 }
 

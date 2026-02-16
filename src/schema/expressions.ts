@@ -540,3 +540,60 @@ export function nullIf<T>(
     values: [...exprSql.values, ...valueSql.values],
   };
 }
+
+// ============================================================================
+// Subquery Expressions
+// ============================================================================
+
+/** Interface for objects that can produce SQL (avoids circular import with QueryBuilder) */
+export interface SqlBuildable {
+  toSQL(): { sql: string; values: unknown[] };
+}
+
+/** EXISTS (subquery) */
+export function exists(subquery: SqlBuildable): BooleanExpression {
+  const { sql: subSql, values } = subquery.toSQL();
+  return {
+    _type: true as boolean,
+    sql: `EXISTS (${subSql})`,
+    values,
+  };
+}
+
+/** NOT EXISTS (subquery) */
+export function notExists(subquery: SqlBuildable): BooleanExpression {
+  const { sql: subSql, values } = subquery.toSQL();
+  return {
+    _type: true as boolean,
+    sql: `NOT EXISTS (${subSql})`,
+    values,
+  };
+}
+
+/** column IN (subquery) */
+export function inSubquery<T>(
+  column: ColumnRef<T, any, any> | Expression<T>,
+  subquery: SqlBuildable
+): BooleanExpression {
+  const colSql = toSqlValue(column);
+  const { sql: subSql, values: subValues } = subquery.toSQL();
+  return {
+    _type: true as boolean,
+    sql: `(${colSql.sql} IN (${subSql}))`,
+    values: [...colSql.values, ...subValues],
+  };
+}
+
+/** column NOT IN (subquery) */
+export function notInSubquery<T>(
+  column: ColumnRef<T, any, any> | Expression<T>,
+  subquery: SqlBuildable
+): BooleanExpression {
+  const colSql = toSqlValue(column);
+  const { sql: subSql, values: subValues } = subquery.toSQL();
+  return {
+    _type: true as boolean,
+    sql: `(${colSql.sql} NOT IN (${subSql}))`,
+    values: [...colSql.values, ...subValues],
+  };
+}

@@ -5,8 +5,8 @@
  */
 
 import type { Schema } from "./define-schema";
-import type { IntrospectedSchema, IntrospectedTable, IntrospectedView, IntrospectedMaterializedView, IntrospectedColumn } from "./introspector";
-import type { Table, TableWithRefs } from "./table";
+import type { IntrospectedSchema, IntrospectedTable, IntrospectedView, IntrospectedMaterializedView, IntrospectedColumn, IntrospectedIndex } from "./introspector";
+import type { Table, TableWithRefs, IndexConfig } from "./table";
 import type { View, ViewWithRefs } from "./view";
 import type { MaterializedView, MaterializedViewWithRefs } from "./materialized-view";
 import type { Columns, Column } from "./columns";
@@ -23,10 +23,20 @@ export interface ColumnChange {
   changes?: string[]; // Description of what changed
 }
 
+export interface IndexChange {
+  type: "add" | "remove" | "modify";
+  indexName: string;
+  indexType: "BITMAP" | "GIN" | "VECTOR";
+  oldIndex?: IntrospectedIndex;
+  newIndex?: IntrospectedIndex;
+  changes?: string[];
+}
+
 export interface TableChange {
   name: string;
   type: "create" | "drop" | "alter";
   columnChanges?: ColumnChange[];
+  indexChanges?: IndexChange[];
   keyChange?: { old: string | null; new: string | null };
   distributionChange?: boolean;
   partitionChange?: boolean;
@@ -232,13 +242,20 @@ function diffTable(
     changes.propertyChanges = propertyChanges;
   }
 
+  // Compare indexes
+  const indexChanges = diffIndexes(defined.config.indexes ?? [], existing.indexes ?? []);
+  if (indexChanges.length > 0) {
+    changes.indexChanges = indexChanges;
+  }
+
   // Return null if no changes
   if (
     changes.columnChanges!.length === 0 &&
     !changes.keyChange &&
     !changes.distributionChange &&
     !changes.partitionChange &&
-    (!changes.propertyChanges || changes.propertyChanges.length === 0)
+    (!changes.propertyChanges || changes.propertyChanges.length === 0) &&
+    (!changes.indexChanges || changes.indexChanges.length === 0)
   ) {
     return null;
   }
@@ -325,6 +342,109 @@ function normalizeDataType(type: string): string {
   normalized = normalized.replace(/^DATETIME\(0\)$/, "DATETIME");
 
   return normalized;
+}
+
+// ============================================================================
+// Index Diffing
+// ============================================================================
+
+function indexConfigToIntrospected(idx: IndexConfig): IntrospectedIndex {
+  const properties: Record<string, string> = {};
+
+  if (idx.type === "VECTOR") {
+    properties["index_type"] = idx.indexType;
+    properties["dim"] = String(idx.dimension);
+    properties["metric_type"] = idx.metric;
+    if (idx.params) {
+      if (idx.params.M !== undefined) properties["M"] = String(idx.params.M);
+      if (idx.params.efConstruction !== undefined) properties["efconstruction"] = String(idx.params.efConstruction);
+      if (idx.params.nlist !== undefined) properties["nlist"] = String(idx.params.nlist);
+      if (idx.params.nbits !== undefined) properties["nbits"] = String(idx.params.nbits);
+    }
+  }
+
+  return {
+    name: idx.name,
+    type: idx.type,
+    columns: idx.type === "GIN" ? idx.columns :
+             idx.type === "BITMAP" ? [idx.column] :
+             [idx.column],
+    properties,
+    comment: idx.comment ?? null,
+  };
+}
+
+function diffIndexes(
+  definedConfigs: IndexConfig[],
+  existingIndexes: IntrospectedIndex[]
+): IndexChange[] {
+  const changes: IndexChange[] = [];
+
+  const definedMap = new Map<string, IntrospectedIndex>();
+  for (const cfg of definedConfigs) {
+    definedMap.set(cfg.name, indexConfigToIntrospected(cfg));
+  }
+  const existingMap = new Map(existingIndexes.map((idx) => [idx.name, idx]));
+
+  // Added indexes
+  for (const [name, idx] of definedMap) {
+    if (!existingMap.has(name)) {
+      changes.push({
+        type: "add",
+        indexName: name,
+        indexType: idx.type,
+        newIndex: idx,
+      });
+    }
+  }
+
+  // Removed indexes
+  for (const [name, idx] of existingMap) {
+    if (!definedMap.has(name)) {
+      changes.push({
+        type: "remove",
+        indexName: name,
+        indexType: idx.type,
+        oldIndex: idx,
+      });
+    }
+  }
+
+  // Modified indexes
+  for (const [name, defined] of definedMap) {
+    const existing = existingMap.get(name);
+    if (existing) {
+      const diffs: string[] = [];
+
+      if (defined.type !== existing.type) {
+        diffs.push(`type: ${existing.type} -> ${defined.type}`);
+      }
+
+      if (defined.columns.join(",") !== existing.columns.join(",")) {
+        diffs.push(`columns: ${existing.columns.join(",")} -> ${defined.columns.join(",")}`);
+      }
+
+      // Compare properties (for VECTOR indexes)
+      for (const [key, val] of Object.entries(defined.properties)) {
+        if (existing.properties[key] !== val) {
+          diffs.push(`${key}: ${existing.properties[key] ?? "(unset)"} -> ${val}`);
+        }
+      }
+
+      if (diffs.length > 0) {
+        changes.push({
+          type: "modify",
+          indexName: name,
+          indexType: defined.type,
+          oldIndex: existing,
+          newIndex: defined,
+          changes: diffs,
+        });
+      }
+    }
+  }
+
+  return changes;
 }
 
 // ============================================================================
@@ -516,6 +636,14 @@ export function summarizeDiff(diff: SchemaDiff): string {
     if (change.distributionChange) details.push("distribution changed");
     if (change.propertyChanges && change.propertyChanges.length > 0) {
       details.push(`properties: ${change.propertyChanges.join(", ")}`);
+    }
+    if (change.indexChanges) {
+      const addedIdx = change.indexChanges.filter((c) => c.type === "add").map((c) => c.indexName);
+      const removedIdx = change.indexChanges.filter((c) => c.type === "remove").map((c) => c.indexName);
+      const modifiedIdx = change.indexChanges.filter((c) => c.type === "modify").map((c) => c.indexName);
+      if (addedIdx.length > 0) details.push(`add indexes: ${addedIdx.join(", ")}`);
+      if (removedIdx.length > 0) details.push(`remove indexes: ${removedIdx.join(", ")}`);
+      if (modifiedIdx.length > 0) details.push(`modify indexes: ${modifiedIdx.join(", ")}`);
     }
     lines.push(`Table '${change.name}': ${details.join("; ")}`);
   }

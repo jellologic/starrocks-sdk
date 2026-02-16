@@ -85,6 +85,19 @@ export {
   type RangePartitionConfig,
   type ListPartitionConfig,
   type ExpressionPartitionConfig,
+
+  // Indexes
+  bitmapIndex,
+  ginIndex,
+  vectorIndex,
+  generateCreateIndexSQL,
+  generateDropIndexSQL,
+  type IndexConfig,
+  type BitmapIndexConfig,
+  type GinIndexConfig,
+  type VectorIndexConfig,
+  type VectorIndexType,
+  type VectorIndexMetric,
 } from "./table";
 
 // Expressions
@@ -130,6 +143,13 @@ export {
   coalesce,
   ifNull,
   nullIf,
+
+  // Subquery expressions
+  type SqlBuildable,
+  exists,
+  notExists,
+  inSubquery,
+  notInSubquery,
 } from "./expressions";
 
 // Aggregates
@@ -207,6 +227,38 @@ export {
   lastValue,
 } from "./window";
 
+// Scalar functions
+export {
+  // String
+  substring,
+  upper,
+  lower,
+  concat,
+  trim,
+  length,
+  replace,
+
+  // Date
+  dateFormat,
+  dateAdd,
+  dateSub,
+  datediff,
+  now,
+  curdate,
+
+  // Math
+  abs,
+  ceil,
+  floor,
+  round,
+
+  // Cast
+  cast,
+  type CastTarget,
+  type CastResult,
+  type IntervalUnit,
+} from "./functions";
+
 // Views
 export {
   // View builder
@@ -257,6 +309,7 @@ export {
   type IntrospectedView,
   type IntrospectedMaterializedView,
   type IntrospectedColumn,
+  type IntrospectedIndex,
 } from "./introspector";
 
 // Schema Diffing
@@ -266,6 +319,7 @@ export {
   type SchemaDiff,
   type TableChange,
   type ColumnChange,
+  type IndexChange,
   type ViewChange,
   type MaterializedViewChange,
 } from "./differ";
