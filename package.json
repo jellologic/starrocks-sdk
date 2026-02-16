@@ -65,6 +65,11 @@
     "clean": "rm -rf dist",
     "prepare": "tsc -p tsconfig.build.json 2>/dev/null || true",
     "prepublishOnly": "bun run clean && bun run build",
+    "lint": "biome check src/",
+    "lint:fix": "biome check --fix src/",
+    "format": "biome format src/",
+    "format:fix": "biome format --write src/",
+    "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:integration": "bun test --timeout 30000",
     "docs:pull": "rm -rf .starrocks-docs && mkdir -p .starrocks-docs && cd .starrocks-docs && git init && git remote add origin https://github.com/StarRocks/starrocks.git && git sparse-checkout set docs/en && git pull origin main --depth 1 && echo 'StarRocks docs pulled to .starrocks-docs/docs/en'"
@@ -77,6 +82,7 @@
     "zod": "^4.1.13"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.4.1",
     "@types/bun": "^1.2.0",
     "@types/node": "^25.2.3",
     "dotenv": "^17.2.2",
