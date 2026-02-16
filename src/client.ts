@@ -23,6 +23,31 @@ import type {
 import { MaterializedViewManager } from "./materialized-views";
 import { StreamLoadClient, type StreamLoadConfig } from "./stream-load";
 
+/**
+ * Validate a SQL identifier (database, table, column name).
+ * Only allows alphanumeric characters and underscores.
+ */
+function validateIdentifier(name: string): string {
+  if (!/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(name)) {
+    throw new Error(`Invalid SQL identifier: ${name}. Only alphanumeric characters and underscores are allowed.`);
+  }
+  if (name.length > 128) {
+    throw new Error(`SQL identifier too long (max 128): ${name}`);
+  }
+  return name;
+}
+
+/**
+ * Escape a string value for safe SQL interpolation.
+ */
+function escapeSqlString(value: string): string {
+  const escaped = value
+    .replace(/\\/g, "\\\\")
+    .replace(/'/g, "''")
+    .replace(/\0/g, "");
+  return `'${escaped}'`;
+}
+
 export class StarRocksClient {
   private pool: mysql.Pool;
   private _db: MySql2Database;
@@ -37,10 +62,9 @@ export class StarRocksClient {
       password: config.password,
       database: config.database,
       waitForConnections: true,
-      connectionLimit: 10,
-      queueLimit: 0,
-      // Network resilience settings
-      connectTimeout: 30000, // 30 seconds for initial connection (for cloud environments)
+      connectionLimit: config.pool?.connectionLimit ?? 10,
+      queueLimit: config.pool?.queueLimit ?? 100,
+      connectTimeout: config.pool?.connectTimeout ?? 30000,
       enableKeepAlive: true,
       keepAliveInitialDelay: 10000,
     });
@@ -91,16 +115,19 @@ export class StarRocksClient {
   // ============================================================================
 
   async createDatabase(name: string, ifNotExists = true): Promise<void> {
+    validateIdentifier(name);
     const clause = ifNotExists ? "IF NOT EXISTS" : "";
     await this.execute(`CREATE DATABASE ${clause} ${name}`);
   }
 
   async dropDatabase(name: string, ifExists = true): Promise<void> {
+    validateIdentifier(name);
     const clause = ifExists ? "IF EXISTS" : "";
     await this.execute(`DROP DATABASE ${clause} ${name}`);
   }
 
   async useDatabase(name: string): Promise<void> {
+    validateIdentifier(name);
     await this.execute(`USE ${name}`);
   }
 
@@ -119,6 +146,8 @@ export class StarRocksClient {
     options: TableOptions | LegacyTableOptions,
     ifNotExists = true
   ): Promise<void> {
+    validateIdentifier(tableName);
+
     // Handle legacy options format
     if ("distributedBy" in options) {
       return this.createTableLegacy(tableName, columns, options, ifNotExists);
@@ -154,7 +183,7 @@ export class StarRocksClient {
 
     // Comment
     if (options.comment) {
-      sql += `\nCOMMENT '${options.comment}'`;
+      sql += `\nCOMMENT ${escapeSqlString(options.comment)}`;
     }
 
     await this.execute(sql);
@@ -202,28 +231,32 @@ export class StarRocksClient {
     }
 
     if (options.comment) {
-      sql += `\nCOMMENT '${options.comment}'`;
+      sql += `\nCOMMENT ${escapeSqlString(options.comment)}`;
     }
 
     await this.execute(sql);
   }
 
   async dropTable(tableName: string, ifExists = true): Promise<void> {
+    validateIdentifier(tableName);
     const clause = ifExists ? "IF EXISTS" : "";
     await this.execute(`DROP TABLE ${clause} ${tableName}`);
   }
 
   async showTables(database?: string): Promise<string[]> {
+    if (database) validateIdentifier(database);
     const sql = database ? `SHOW TABLES FROM ${database}` : "SHOW TABLES";
     const rows = await this.raw<Record<string, string>>(sql);
     return rows.map((r) => Object.values(r)[0]).filter((v): v is string => v !== undefined);
   }
 
   async describeTable(tableName: string): Promise<unknown[]> {
+    validateIdentifier(tableName);
     return this.raw(`DESC ${tableName}`);
   }
 
   async getTableSchema(tableName: string): Promise<string> {
+    validateIdentifier(tableName);
     const rows = await this.raw<{ "Create Table": string }>(`SHOW CREATE TABLE ${tableName}`);
     return rows[0]?.["Create Table"] ?? "";
   }
@@ -236,6 +269,7 @@ export class StarRocksClient {
    * Create an index on a table
    */
   async createIndex(tableName: string, index: IndexDef): Promise<void> {
+    validateIdentifier(tableName);
     switch (index.type) {
       case "BITMAP":
         await this.createBitmapIndex(tableName, index);
@@ -256,9 +290,10 @@ export class StarRocksClient {
    * Create a bitmap index for low/medium cardinality columns
    */
   async createBitmapIndex(tableName: string, index: BitmapIndex): Promise<void> {
+    validateIdentifier(index.name);
     let sql = `CREATE INDEX ${index.name} ON ${tableName} (${index.column}) USING BITMAP`;
     if (index.comment) {
-      sql += ` COMMENT '${index.comment}'`;
+      sql += ` COMMENT ${escapeSqlString(index.comment)}`;
     }
     await this.execute(sql);
   }
@@ -277,10 +312,11 @@ export class StarRocksClient {
    * Note: GIN index in StarRocks doesn't support PROPERTIES clause in CREATE INDEX
    */
   async createInvertedIndex(tableName: string, index: InvertedIndex): Promise<void> {
+    validateIdentifier(index.name);
     let sql = `CREATE INDEX ${index.name} ON ${tableName} (${index.columns.join(", ")}) USING GIN`;
 
     if (index.comment) {
-      sql += ` COMMENT '${index.comment}'`;
+      sql += ` COMMENT ${escapeSqlString(index.comment)}`;
     }
 
     await this.execute(sql);
@@ -309,10 +345,11 @@ export class StarRocksClient {
       }
     }
 
+    validateIdentifier(index.name);
     let sql = `CREATE INDEX ${index.name} ON ${tableName} (${index.column}) USING VECTOR (${props.join(", ")})`;
 
     if (index.comment) {
-      sql += ` COMMENT '${index.comment}'`;
+      sql += ` COMMENT ${escapeSqlString(index.comment)}`;
     }
 
     await this.execute(sql);
@@ -322,6 +359,8 @@ export class StarRocksClient {
    * Drop an index from a table
    */
   async dropIndex(tableName: string, indexName: string): Promise<void> {
+    validateIdentifier(tableName);
+    validateIdentifier(indexName);
     await this.execute(`DROP INDEX ${indexName} ON ${tableName}`);
   }
 
@@ -329,6 +368,7 @@ export class StarRocksClient {
    * Show indexes on a table
    */
   async showIndexes(tableName: string): Promise<unknown[]> {
+    validateIdentifier(tableName);
     return this.raw(`SHOW INDEX FROM ${tableName}`);
   }
 
@@ -344,6 +384,7 @@ export class StarRocksClient {
     data: Record<string, unknown>,
     options?: { label?: string }
   ): Promise<void> {
+    validateIdentifier(tableName);
     const columns = Object.keys(data);
     const values = Object.values(data).map((v) => this.formatValue(v));
 
@@ -364,6 +405,7 @@ export class StarRocksClient {
     data: Record<string, unknown>[],
     options?: { label?: string; batchSize?: number }
   ): Promise<void> {
+    validateIdentifier(tableName);
     if (data.length === 0) return;
 
     const columns = Object.keys(data[0]!);
@@ -396,6 +438,7 @@ export class StarRocksClient {
     selectQuery: string,
     options?: { label?: string; columns?: string[]; partitions?: string[] }
   ): Promise<void> {
+    validateIdentifier(tableName);
     let sql = `INSERT INTO ${tableName}`;
 
     if (options?.partitions?.length) {
@@ -423,6 +466,7 @@ export class StarRocksClient {
     selectQuery: string,
     options?: { partitions?: string[]; dynamicOverwrite?: boolean }
   ): Promise<void> {
+    validateIdentifier(tableName);
     let sql = "";
 
     if (options?.dynamicOverwrite) {
@@ -456,20 +500,19 @@ export class StarRocksClient {
     let sql = "SELECT * FROM information_schema.loads WHERE 1=1";
 
     if (options?.database) {
-      // Column is DB_NAME in StarRocks 4.x
-      sql += ` AND DB_NAME = '${options.database}'`;
+      sql += ` AND DB_NAME = ${escapeSqlString(options.database)}`;
     }
     if (options?.label) {
-      sql += ` AND LABEL = '${options.label}'`;
+      sql += ` AND LABEL = ${escapeSqlString(options.label)}`;
     }
     if (options?.state) {
-      sql += ` AND STATE = '${options.state}'`;
+      sql += ` AND STATE = ${escapeSqlString(options.state)}`;
     }
 
     sql += " ORDER BY CREATE_TIME DESC";
 
     if (options?.limit) {
-      sql += ` LIMIT ${options.limit}`;
+      sql += ` LIMIT ${Math.max(0, Math.floor(Number(options.limit)))}`;
     }
 
     const rows = await this.raw<Record<string, unknown>>(sql);
@@ -504,7 +547,8 @@ export class StarRocksClient {
    * Cancel a load job by label
    */
   async cancelLoad(database: string, label: string): Promise<void> {
-    await this.execute(`CANCEL LOAD FROM ${database} WHERE LABEL = "${label}"`);
+    validateIdentifier(database);
+    await this.execute(`CANCEL LOAD FROM ${database} WHERE LABEL = ${escapeSqlString(label)}`);
   }
 
   // ============================================================================
@@ -515,6 +559,7 @@ export class StarRocksClient {
    * Get detailed column information for a table
    */
   async getColumns(tableName: string): Promise<ColumnInfo[]> {
+    validateIdentifier(tableName);
     const rows = await this.raw<Record<string, unknown>>(`DESC ${tableName}`);
 
     return rows.map((row) => ({
@@ -531,6 +576,7 @@ export class StarRocksClient {
    * Get partition information for a table
    */
   async getPartitions(tableName: string): Promise<PartitionInfo[]> {
+    validateIdentifier(tableName);
     const rows = await this.raw<Record<string, unknown>>(
       `SHOW PARTITIONS FROM ${tableName}`
     );
@@ -556,6 +602,7 @@ export class StarRocksClient {
    * Get table statistics
    */
   async getTableStats(tableName: string): Promise<TableStats> {
+    validateIdentifier(tableName);
     // Get row count
     const countResult = await this.raw<{ cnt: number }>(
       `SELECT COUNT(*) as cnt FROM ${tableName}`
@@ -579,6 +626,7 @@ export class StarRocksClient {
    * Get all tables with their types
    */
   async getTableInfos(database?: string): Promise<TableInfo[]> {
+    if (database) validateIdentifier(database);
     const sql = database
       ? `SHOW FULL TABLES FROM ${database}`
       : "SHOW FULL TABLES";
@@ -617,8 +665,7 @@ export class StarRocksClient {
       return "NULL";
     }
     if (typeof value === "string") {
-      // Escape single quotes
-      return `'${value.replace(/'/g, "''")}'`;
+      return escapeSqlString(value);
     }
     if (typeof value === "number" || typeof value === "bigint") {
       return String(value);
@@ -633,7 +680,7 @@ export class StarRocksClient {
       return `[${value.map((v) => this.formatValue(v)).join(", ")}]`;
     }
     if (typeof value === "object") {
-      return `'${JSON.stringify(value).replace(/'/g, "''")}'`;
+      return escapeSqlString(JSON.stringify(value));
     }
     return String(value);
   }
@@ -649,7 +696,7 @@ export class StarRocksClient {
     if (col.defaultValue !== undefined) def += ` DEFAULT ${col.defaultValue}`;
     if (col.generatedAs) def += ` AS ${col.generatedAs}`;
     if (col.aggregateType) def += ` ${col.aggregateType}`;
-    if (col.comment) def += ` COMMENT '${col.comment}'`;
+    if (col.comment) def += ` COMMENT ${escapeSqlString(col.comment)}`;
 
     return def;
   }
