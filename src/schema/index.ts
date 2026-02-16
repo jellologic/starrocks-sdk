@@ -336,6 +336,7 @@ export {
   generateMigrationSQL,
   generateDryRunOutput,
   toExecutableMigration,
+  writeMigrationFile,
   type GeneratedMigrationPlan,
   type MigrationStatement,
   type GeneratedMigration,

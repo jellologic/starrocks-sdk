@@ -13,6 +13,8 @@
  * - Schema snapshots before/after migrations
  */
 
+import { readdir } from "node:fs/promises";
+import { join, extname } from "node:path";
 import type { StarRocksClient } from "./client";
 import { SchemaIntrospector } from "./schema-diff";
 
@@ -96,14 +98,16 @@ export class MigrationRunner {
   private introspector: SchemaIntrospector;
   private readonly MIGRATIONS_TABLE = "_migrations";
   private logger: (msg: string) => void;
+  private migrationsDir?: string;
 
   constructor(
     private client: StarRocksClient,
     private database: string,
-    options?: { logger?: (msg: string) => void }
+    options?: { logger?: (msg: string) => void; migrationsDir?: string }
   ) {
     this.introspector = new SchemaIntrospector(client);
     this.logger = options?.logger ?? (() => {});
+    this.migrationsDir = options?.migrationsDir;
   }
 
   /**
@@ -240,6 +244,66 @@ export class MigrationRunner {
     }
 
     return results;
+  }
+
+  /**
+   * Load migrations from the configured `migrationsDir`.
+   *
+   * Scans the directory for `.ts` and `.js` files, sorts them alphabetically
+   * (timestamp-prefixed filenames sort chronologically), and dynamically
+   * imports each file. Every file must default-export a `Migration` object
+   * (with `id`, `description`, `up`, and optionally `down`).
+   *
+   * Requires `migrationsDir` to be set in the constructor options.
+   */
+  async loadMigrations(): Promise<Migration[]> {
+    if (!this.migrationsDir) {
+      throw new Error(
+        "migrationsDir is not configured. Pass it in the MigrationRunner constructor options."
+      );
+    }
+
+    const entries = await readdir(this.migrationsDir);
+
+    const migrationFiles = entries
+      .filter((f) => {
+        const ext = extname(f);
+        return ext === ".ts" || ext === ".js";
+      })
+      .sort(); // alphabetical sort = chronological with timestamp prefixes
+
+    const migrations: Migration[] = [];
+
+    for (const file of migrationFiles) {
+      const filePath = join(this.migrationsDir, file);
+      const mod = await import(filePath);
+      const migration: Migration = mod.default ?? mod;
+
+      if (!migration.id || !migration.up) {
+        throw new Error(
+          `Migration file '${file}' does not default-export a valid Migration object (must have 'id' and 'up').`
+        );
+      }
+
+      migrations.push(migration);
+    }
+
+    return migrations;
+  }
+
+  /**
+   * Run all pending migrations from the configured `migrationsDir`.
+   *
+   * This is the recommended workflow: migrations are written to disk first
+   * (see `writeMigrationFile`) and the runner scans the directory.
+   *
+   * Internally calls `loadMigrations()` then passes the result to `migrate()`.
+   */
+  async migrateFromDir(
+    options?: { dryRun?: boolean; stopOnError?: boolean }
+  ): Promise<MigrationResult[]> {
+    const migrations = await this.loadMigrations();
+    return this.migrate(migrations, options);
   }
 
   /**

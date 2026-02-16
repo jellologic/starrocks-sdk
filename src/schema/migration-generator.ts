@@ -4,6 +4,8 @@
  * Generate migration SQL from schema diffs.
  */
 
+import { writeFile, mkdir } from "node:fs/promises";
+import { join } from "node:path";
 import type { Schema } from "./define-schema";
 import type { SchemaDiff, TableChange, ColumnChange, ViewChange, MaterializedViewChange, IndexChange } from "./differ";
 import type { IntrospectedSchema } from "./introspector";
@@ -110,6 +112,31 @@ export function generateMigration(
     migration,
     fileContent: generateMigrationFileContent(migration),
   };
+}
+
+// ============================================================================
+// File Persistence
+// ============================================================================
+
+/**
+ * Write a generated migration to disk.
+ *
+ * Creates the target directory if it doesn't exist and writes
+ * `migration.fileContent` to `{dir}/{migration.migration.name}.ts`.
+ *
+ * @param dir  - Directory to write the migration file into.
+ * @param migration - The `GeneratedMigration` returned by `generateMigration()`.
+ * @returns The absolute path of the written file.
+ */
+export async function writeMigrationFile(
+  dir: string,
+  migration: GeneratedMigration
+): Promise<string> {
+  await mkdir(dir, { recursive: true });
+  const filename = `${migration.migration.name}.ts`;
+  const filePath = join(dir, filename);
+  await writeFile(filePath, migration.fileContent, "utf-8");
+  return filePath;
 }
 
 // ============================================================================
