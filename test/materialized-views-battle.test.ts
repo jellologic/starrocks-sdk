@@ -105,11 +105,8 @@ describe("StarRocks Materialized Views Battle Test", () => {
         GROUP BY event_type
       `);
 
-      // Trigger refresh
-      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_event_counts")}`);
-
-      // Wait for refresh to complete
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Trigger sync refresh
+      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_event_counts")} WITH SYNC MODE`);
 
       // Query the MV
       const result = await client.raw<{ event_type: string; event_count: number; total_tickets: number }>(
@@ -135,9 +132,8 @@ describe("StarRocks Materialized Views Battle Test", () => {
         GROUP BY venue_id
       `);
 
-      // Manually refresh to get initial data
-      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_venue_revenue")}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Sync refresh to get initial data
+      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_venue_revenue")} WITH SYNC MODE`);
 
       const result = await client.raw<{ venue_id: number; total_revenue: number }>(
         `SELECT * FROM ${FQN("mv_venue_revenue")} ORDER BY venue_id`
@@ -178,8 +174,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
         SELECT event_type, COUNT(*) as cnt FROM ${FQN("events")} GROUP BY event_type
       `);
 
-      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_hash_dist")}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_hash_dist")} WITH SYNC MODE`);
 
       const result = await client.raw(`SELECT * FROM ${FQN("mv_hash_dist")}`);
       expect(result.length).toBe(3);
@@ -195,8 +190,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
         SELECT event_type, SUM(tickets_sold) as total FROM ${FQN("events")} GROUP BY event_type
       `);
 
-      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_random_dist")}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_random_dist")} WITH SYNC MODE`);
 
       const result = await client.raw(`SELECT * FROM ${FQN("mv_random_dist")}`);
       expect(result.length).toBe(3);
@@ -214,8 +208,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
         GROUP BY venue_id, event_type
       `);
 
-      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_multi_hash")}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_multi_hash")} WITH SYNC MODE`);
 
       const result = await client.raw(`SELECT * FROM ${FQN("mv_multi_hash")}`);
       expect(result.length).toBeGreaterThan(0);
@@ -245,8 +238,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
         GROUP BY e.venue_id, v.name, v.city
       `);
 
-      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_event_venue_join")}`);
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await client.raw(`REFRESH MATERIALIZED VIEW ${FQN("mv_event_venue_join")} WITH SYNC MODE`);
 
       const result = await client.raw<{ venue_name: string; event_count: number }>(
         `SELECT * FROM ${FQN("mv_event_venue_join")} ORDER BY venue_name`
@@ -255,7 +247,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
       expect(result.length).toBe(3);
       const msg = result.find((r: any) => r.venue_name === "Madison Square Garden");
       expect((msg as any).event_count).toBe(3); // 3 events at MSG
-    });
+    }, 15_000);
   });
 
   // ============================================================================
@@ -298,7 +290,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
       );
 
       expect((result2[0] as any).total).toBe(initialTotal + 5000);
-    });
+    }, 15_000);
 
     test("should refresh MV with SYNC mode", async () => {
       await client.raw(`
@@ -523,7 +515,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
       );
 
       expect(result.length).toBe(3);
-    });
+    }, 15_000);
 
     test("should create MV with CASE expression", async () => {
       await client.raw(`
@@ -556,7 +548,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
       );
 
       expect(result.length).toBe(3); // budget, premium, standard
-    });
+    }, 15_000);
 
     test("should create MV with date truncation", async () => {
       await client.raw(`
@@ -580,7 +572,7 @@ describe("StarRocks Materialized Views Battle Test", () => {
       );
 
       expect(result.length).toBeGreaterThan(0);
-    });
+    }, 15_000);
   });
 
   // ============================================================================

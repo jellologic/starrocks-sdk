@@ -304,11 +304,12 @@ describe("Type-Safe Views Integration", () => {
       const sql = generateCreateMaterializedViewSQL(eventStatsMV);
       await client.execute(sql);
 
-      // Verify MV was created
-      const mvs = await client.raw<{ Name: string }>(
-        "SHOW MATERIALIZED VIEWS LIKE 'event_stats_mv'"
+      // Verify MV was created (SHOW MATERIALIZED VIEWS can trigger internal
+      // StarRocks errors with some Docker images, so use SHOW CREATE instead)
+      const showCreate = await client.raw(
+        "SHOW CREATE MATERIALIZED VIEW event_stats_mv"
       );
-      expect(mvs.length).toBe(1);
+      expect(showCreate.length).toBe(1);
     });
 
     test("should refresh materialized view using operations", async () => {
@@ -389,20 +390,24 @@ describe("Type-Safe Views Integration", () => {
 
       await client.execute(generateCreateMaterializedViewSQL(tempMV));
 
-      // Verify it exists
-      const beforeMVs = await client.raw<{ Name: string }>(
-        "SHOW MATERIALIZED VIEWS LIKE 'temp_mv_to_drop'"
+      // Verify it exists (SHOW MATERIALIZED VIEWS can trigger internal
+      // StarRocks errors with some Docker images, so use SHOW CREATE instead)
+      const showCreate = await client.raw(
+        "SHOW CREATE MATERIALIZED VIEW temp_mv_to_drop"
       );
-      expect(beforeMVs.length).toBe(1);
+      expect(showCreate.length).toBe(1);
 
       // Drop it
       await client.execute(generateDropMaterializedViewSQL(tempMV));
 
-      // Verify it's gone
-      const afterMVs = await client.raw<{ Name: string }>(
-        "SHOW MATERIALIZED VIEWS LIKE 'temp_mv_to_drop'"
-      );
-      expect(afterMVs.length).toBe(0);
+      // Verify it's gone — querying should fail
+      let dropped = false;
+      try {
+        await client.raw("SELECT * FROM temp_mv_to_drop LIMIT 1");
+      } catch {
+        dropped = true;
+      }
+      expect(dropped).toBe(true);
     });
   });
 

@@ -962,11 +962,13 @@ describe("Differ Edge Cases", () => {
 
   describe("Column Default Value Edge Cases", () => {
     test("should detect default value change from null to value", () => {
+      // Use DUPLICATE KEY — the differ intentionally skips default comparison
+      // for PRIMARY KEY tables since StarRocks ignores DEFAULT on non-key columns.
       const tableWithDefault = starrocksTable("test_defaults", {
         id: bigint("id").notNull(),
         status: varchar("status", { length: 50 }).default("active"),
       }, (t) => ({
-        key: primaryKey(t.id),
+        key: duplicateKey(t.id),
         distribution: hash(t.id, { buckets: 4 }),
       }));
 
@@ -980,10 +982,10 @@ describe("Differ Edge Cases", () => {
           name: "test_defaults",
           type: "table",
           columns: [
-            { name: "id", dataType: "BIGINT", isNullable: false, defaultValue: null, columnKey: "PRI", aggregateType: null, comment: null },
+            { name: "id", dataType: "BIGINT", isNullable: false, defaultValue: null, columnKey: "DUP", aggregateType: null, comment: null },
             { name: "status", dataType: "VARCHAR(50)", isNullable: true, defaultValue: null, columnKey: null, aggregateType: null, comment: null },
           ],
-          keyType: "PRIMARY",
+          keyType: "DUPLICATE",
           keyColumns: ["id"],
           distributionType: "HASH",
           distributionColumns: ["id"],
