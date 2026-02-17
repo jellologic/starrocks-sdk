@@ -7,6 +7,11 @@ export interface StarRocksConfig {
   user: string;
   password?: string;
   database?: string;
+  pool?: {
+    connectionLimit?: number;
+    queueLimit?: number;
+    connectTimeout?: number;
+  };
 }
 
 export interface StarRocksConnection {

@@ -97,7 +97,7 @@ export function validatePositiveInteger(value: number, name: string): void {
  */
 export function formatDefaultValue(value: unknown): string {
   if (value === null) return "NULL";
-  if (typeof value === "boolean") return value ? '"true"' : '"false"';
+  if (typeof value === "boolean") return value ? "TRUE" : "FALSE";
   if (typeof value === "number") return String(value);
   if (typeof value === "string") {
     // Check for special SQL expressions (like CURRENT_TIMESTAMP)

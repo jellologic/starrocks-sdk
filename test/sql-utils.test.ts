@@ -200,12 +200,12 @@ describe("formatDefaultValue", () => {
     expect(formatDefaultValue(null)).toBe("NULL");
   });
 
-  test("formats true as quoted string", () => {
-    expect(formatDefaultValue(true)).toBe('"true"');
+  test("formats true as SQL keyword", () => {
+    expect(formatDefaultValue(true)).toBe("TRUE");
   });
 
-  test("formats false as quoted string", () => {
-    expect(formatDefaultValue(false)).toBe('"false"');
+  test("formats false as SQL keyword", () => {
+    expect(formatDefaultValue(false)).toBe("FALSE");
   });
 
   test("formats number as string", () => {

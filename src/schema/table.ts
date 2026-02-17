@@ -399,7 +399,7 @@ export interface ColumnRef<T, TTableName extends string, TColName extends string
 }
 
 /** Property names on Table that must not be shadowed by column refs */
-type TableBuiltinKeys = '_type' | 'name' | 'columns' | 'config' | '$inferSelect' | '$inferInsert';
+type TableBuiltinKeys = '_type' | 'columns' | 'config' | '$inferSelect' | '$inferInsert';
 
 /** Table with column references for query building */
 export type TableWithRefs<TName extends string, TColumns extends Columns> = Table<
@@ -435,7 +435,7 @@ class TableBuilder<TName extends string, TColumns extends Columns>
   ) {
     this._tableName = name;
     // Create column references on the table object
-    const BUILTIN_KEYS = new Set(["_type", "name", "columns", "config", "$inferSelect", "$inferInsert"]);
+    const BUILTIN_KEYS = new Set(["_type", "columns", "config", "$inferSelect", "$inferInsert"]);
     for (const [key, col] of Object.entries(columns)) {
       const ref = {
         _type: undefined as any,

@@ -63,9 +63,39 @@ async function waitForMySQL(
   );
 }
 
+/** Ensure the Docker daemon is running, starting it if necessary. */
+function ensureDockerDaemon(): void {
+  try {
+    execSync("docker info", { stdio: "pipe" });
+  } catch {
+    console.log("[global-setup] Docker daemon not running, attempting to start…");
+    try {
+      execSync("sudo dockerd &>/tmp/dockerd.log &", { stdio: "pipe" });
+    } catch {
+      // Some environments need different invocations
+      execSync("dockerd &>/tmp/dockerd.log &", { stdio: "pipe" });
+    }
+
+    // Wait up to 30s for the daemon to be ready
+    const deadline = Date.now() + 30_000;
+    while (Date.now() < deadline) {
+      try {
+        execSync("docker info", { stdio: "pipe" });
+        console.log("[global-setup] Docker daemon is ready.");
+        return;
+      } catch {
+        execSync("sleep 1", { stdio: "pipe" });
+      }
+    }
+    throw new Error("Docker daemon did not start within 30s");
+  }
+}
+
 // ---------------------------------------------------------------------------
 // Main setup
 // ---------------------------------------------------------------------------
+
+ensureDockerDaemon();
 
 const suffix = Math.random().toString(36).slice(2, 8);
 const containerName = `starrocks-test-${suffix}`;
