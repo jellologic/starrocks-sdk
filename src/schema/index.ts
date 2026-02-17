@@ -342,6 +342,15 @@ export {
   type GeneratedMigration,
 } from "./migration-generator";
 
+// ALTER TABLE Builder
+export {
+  alter,
+  AlterTableBuilder,
+  type AlterOperation,
+  type AlterTablePlan,
+  type AlterStatement,
+} from "./alter";
+
 // Knex-Style Query Builder
 export {
   KnexBuilder,
