@@ -62,6 +62,30 @@ function parseResponse(
 /** Default HTTP timeout for transaction operations (2 minutes) */
 const DEFAULT_HTTP_TIMEOUT_MS = 120_000
 
+/** Valid SQL identifier pattern */
+const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/
+
+/**
+ * Validate database/table identifiers for transaction operations
+ */
+function validateIdentifier(
+  name: string,
+  kind: "database" | "table",
+  label: string,
+  phase: "begin" | "load" | "prepare" | "commit" | "abort"
+): Effect.Effect<void, TransactionError> {
+  if (!name || !IDENTIFIER_RE.test(name)) {
+    return Effect.fail(
+      new TransactionError({
+        label,
+        phase,
+        cause: `Invalid ${kind} name: '${name}'. Must match ${IDENTIFIER_RE}`,
+      })
+    )
+  }
+  return Effect.void
+}
+
 /**
  * Validate HTTP response and extract JSON body.
  * Fails with TransactionError if HTTP status is not OK.
@@ -182,6 +206,9 @@ export const TransactionLive = Layer.scoped(
     return {
       begin: (options) =>
         Effect.gen(function* () {
+          yield* validateIdentifier(options.database, "database", options.label, "begin")
+          yield* validateIdentifier(options.table, "table", options.label, "begin")
+
           const headers = makeHeaders(options.label, options.database, options.table, {
             ...(options.timeout && { timeout: String(options.timeout) }),
             ...(options.idleTimeout && { idle_transaction_timeout: String(options.idleTimeout) }),

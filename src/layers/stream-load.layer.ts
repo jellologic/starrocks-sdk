@@ -63,6 +63,76 @@ function createRetrySchedule(maxRetries: number, initialDelayMs: number, maxDela
 }
 
 /**
+ * Validate database/table identifier: must be a valid SQL identifier
+ */
+const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/
+
+function validateLoadOptions(
+  options: StreamLoadOptions
+): Effect.Effect<void, StreamLoadError> {
+  if (!options.database || !IDENTIFIER_RE.test(options.database)) {
+    return Effect.fail(
+      new StreamLoadError({
+        table: options.table ?? "unknown",
+        message: `Invalid database name: '${options.database}'. Must match ${IDENTIFIER_RE}`,
+      })
+    )
+  }
+  if (!options.table || !IDENTIFIER_RE.test(options.table)) {
+    return Effect.fail(
+      new StreamLoadError({
+        table: options.table ?? "unknown",
+        message: `Invalid table name: '${options.table}'. Must match ${IDENTIFIER_RE}`,
+      })
+    )
+  }
+  if (options.maxFilterRatio !== undefined && (options.maxFilterRatio < 0 || options.maxFilterRatio > 1)) {
+    return Effect.fail(
+      new StreamLoadError({
+        table: options.table,
+        message: `maxFilterRatio must be between 0 and 1, got ${options.maxFilterRatio}`,
+      })
+    )
+  }
+  if (options.timeout !== undefined && (options.timeout <= 0 || !Number.isFinite(options.timeout))) {
+    return Effect.fail(
+      new StreamLoadError({
+        table: options.table,
+        message: `timeout must be a positive finite number, got ${options.timeout}`,
+      })
+    )
+  }
+  if (options.retry) {
+    const { maxRetries, initialDelayMs, maxDelayMs } = options.retry
+    if (maxRetries !== undefined && (maxRetries < 0 || !Number.isFinite(maxRetries))) {
+      return Effect.fail(
+        new StreamLoadError({
+          table: options.table,
+          message: `retry.maxRetries must be a non-negative finite number, got ${maxRetries}`,
+        })
+      )
+    }
+    if (initialDelayMs !== undefined && (initialDelayMs <= 0 || !Number.isFinite(initialDelayMs))) {
+      return Effect.fail(
+        new StreamLoadError({
+          table: options.table,
+          message: `retry.initialDelayMs must be a positive finite number, got ${initialDelayMs}`,
+        })
+      )
+    }
+    if (maxDelayMs !== undefined && (maxDelayMs <= 0 || !Number.isFinite(maxDelayMs))) {
+      return Effect.fail(
+        new StreamLoadError({
+          table: options.table,
+          message: `retry.maxDelayMs must be a positive finite number, got ${maxDelayMs}`,
+        })
+      )
+    }
+  }
+  return Effect.void
+}
+
+/**
  * Generate unique label for stream load
  */
 function generateLabel(): string {
@@ -249,6 +319,26 @@ export const StreamLoadLive = Layer.scoped(
      * Load with automatic retry for transient failures
      */
     const doLoad = (
+      data: string | Buffer,
+      options: StreamLoadOptions & { format: "csv" | "json"; headers?: Record<string, string> }
+    ): Effect.Effect<StreamLoadResult, StreamLoadError> =>
+      Effect.gen(function* () {
+        yield* validateLoadOptions(options)
+
+        // Validate non-empty data for string payloads
+        if (typeof data === "string" && data.length === 0) {
+          return yield* Effect.fail(
+            new StreamLoadError({
+              table: options.table,
+              message: "Cannot load empty data",
+            })
+          )
+        }
+
+        return yield* doLoadInner(data, options)
+      })
+
+    const doLoadInner = (
       data: string | Buffer,
       options: StreamLoadOptions & { format: "csv" | "json"; headers?: Record<string, string> }
     ): Effect.Effect<StreamLoadResult, StreamLoadError> => {

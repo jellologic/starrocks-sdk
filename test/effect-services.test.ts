@@ -107,6 +107,126 @@ describe("Effect Services Integration", () => {
       expect((result as StreamLoadError).message).toContain("empty")
     })
 
+    test("should reject invalid database name", async () => {
+      const program = Effect.gen(function* () {
+        const loader = yield* StreamLoad
+        yield* loader.loadObjects(
+          [{ id: 1, name: "test", value: 1 }],
+          { database: "invalid-db!", table: "effect_test_events" }
+        )
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(StreamLoadTest),
+          Effect.catchTag("StreamLoadError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(StreamLoadError)
+      expect((result as StreamLoadError).message).toContain("Invalid database name")
+    })
+
+    test("should reject invalid table name", async () => {
+      const program = Effect.gen(function* () {
+        const loader = yield* StreamLoad
+        yield* loader.loadObjects(
+          [{ id: 1, name: "test", value: 1 }],
+          { database: TEST_DATABASE, table: "bad table!" }
+        )
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(StreamLoadTest),
+          Effect.catchTag("StreamLoadError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(StreamLoadError)
+      expect((result as StreamLoadError).message).toContain("Invalid table name")
+    })
+
+    test("should reject maxFilterRatio out of range", async () => {
+      const program = Effect.gen(function* () {
+        const loader = yield* StreamLoad
+        yield* loader.loadObjects(
+          [{ id: 1, name: "test", value: 1 }],
+          { database: TEST_DATABASE, table: "effect_test_events", maxFilterRatio: 1.5 }
+        )
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(StreamLoadTest),
+          Effect.catchTag("StreamLoadError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(StreamLoadError)
+      expect((result as StreamLoadError).message).toContain("maxFilterRatio")
+    })
+
+    test("should reject negative timeout", async () => {
+      const program = Effect.gen(function* () {
+        const loader = yield* StreamLoad
+        yield* loader.loadObjects(
+          [{ id: 1, name: "test", value: 1 }],
+          { database: TEST_DATABASE, table: "effect_test_events", timeout: -1 }
+        )
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(StreamLoadTest),
+          Effect.catchTag("StreamLoadError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(StreamLoadError)
+      expect((result as StreamLoadError).message).toContain("timeout")
+    })
+
+    test("should reject empty CSV data", async () => {
+      const program = Effect.gen(function* () {
+        const loader = yield* StreamLoad
+        yield* loader.loadCsv("", {
+          database: TEST_DATABASE,
+          table: "effect_test_events",
+        })
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(StreamLoadTest),
+          Effect.catchTag("StreamLoadError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(StreamLoadError)
+      expect((result as StreamLoadError).message).toContain("empty")
+    })
+
+    test("should reject empty JSON data", async () => {
+      const program = Effect.gen(function* () {
+        const loader = yield* StreamLoad
+        yield* loader.loadJson("", {
+          database: TEST_DATABASE,
+          table: "effect_test_events",
+        })
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(StreamLoadTest),
+          Effect.catchTag("StreamLoadError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(StreamLoadError)
+      expect((result as StreamLoadError).message).toContain("empty")
+    })
+
     test("should load CSV data successfully", async () => {
       const program = Effect.gen(function* () {
         const loader = yield* StreamLoad
@@ -180,6 +300,48 @@ describe("Effect Services Integration", () => {
     function uniqueLabel(prefix: string): string {
       return `${prefix}_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`
     }
+
+    test("should reject invalid database name on begin", async () => {
+      const program = Effect.gen(function* () {
+        const tx = yield* Transaction
+        yield* tx.begin({
+          database: "bad-db!",
+          table: "effect_test_events",
+          label: uniqueLabel("validate_db"),
+        })
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(TransactionTest),
+          Effect.catchTag("TransactionError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(TransactionError)
+      expect((result as TransactionError).cause).toContain("Invalid database name")
+    })
+
+    test("should reject invalid table name on begin", async () => {
+      const program = Effect.gen(function* () {
+        const tx = yield* Transaction
+        yield* tx.begin({
+          database: TEST_DATABASE,
+          table: "bad table!",
+          label: uniqueLabel("validate_tbl"),
+        })
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(TransactionTest),
+          Effect.catchTag("TransactionError", (e) => Effect.succeed(e))
+        )
+      )
+
+      expect(result).toBeInstanceOf(TransactionError)
+      expect((result as TransactionError).cause).toContain("Invalid table name")
+    })
 
     test("should complete 2PC flow: begin -> load -> commit", async () => {
       const label = uniqueLabel("effect_txn")
