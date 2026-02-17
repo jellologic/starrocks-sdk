@@ -32,6 +32,12 @@ export {
   type TransactionBeginOptions,
 } from "./services/transaction.service"
 
+export {
+  type BaseLoadOptions,
+  type CsvLoadOptions,
+  type JsonLoadOptions,
+} from "./services/shared-options"
+
 // =============================================================================
 // Effect Layers (Adapters) - Concrete implementations
 // =============================================================================

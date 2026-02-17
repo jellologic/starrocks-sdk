@@ -8,6 +8,7 @@ import {
 } from "../services/stream-load.service"
 import { StreamLoadError } from "../errors"
 import { StarRocksConfig } from "../config/starrocks.config"
+import { buildLoadHeaders } from "../services/shared-options"
 
 /**
  * Default retry configuration
@@ -203,20 +204,17 @@ export const StreamLoadLive = Layer.scoped(
       Effect.gen(function* () {
         const url = `${baseUrl}/api/${options.database}/${options.table}/_stream_load`
 
+        const loadHeaders = buildLoadHeaders({
+          ...options,
+          stripOuterArray: options.format === "json",
+        })
+
         const headers: Record<string, string> = {
           Authorization: `Basic ${auth}`,
           Expect: "100-continue",
           label,
+          ...loadHeaders,
           ...options.headers,
-        }
-
-        if (options.format === "json") {
-          headers["format"] = "json"
-          headers["strip_outer_array"] = "true"
-        }
-
-        if (options.columns?.length) {
-          headers["columns"] = options.columns.join(", ")
         }
 
         if (options.timeout) {
@@ -225,14 +223,6 @@ export const StreamLoadLive = Layer.scoped(
 
         if (options.maxFilterRatio !== undefined) {
           headers["max_filter_ratio"] = String(options.maxFilterRatio)
-        }
-
-        // Partial update for PRIMARY KEY tables
-        if (options.partialUpdate) {
-          headers["partial_update"] = "true"
-          if (options.partialUpdateMode) {
-            headers["partial_update_mode"] = options.partialUpdateMode
-          }
         }
 
         // Convert Buffer to Uint8Array for fetch compatibility
@@ -400,19 +390,12 @@ export const StreamLoadLive = Layer.scoped(
         doLoad(csv, {
           ...options,
           format: "csv",
-          headers: {
-            ...(options.columnSeparator && { column_separator: options.columnSeparator }),
-            ...(options.rowDelimiter && { row_delimiter: options.rowDelimiter }),
-          },
         }),
 
       loadJson: (json, options) =>
         doLoad(json, {
           ...options,
           format: "json",
-          headers: {
-            ...(options.stripOuterArray && { strip_outer_array: "true" }),
-          },
         }),
     } satisfies StreamLoadService
   })

@@ -1,6 +1,7 @@
 // packages/starrocks/src/services/transaction.service.ts
 import { Context, Effect } from "effect"
 import type { TransactionError } from "../errors"
+import type { BaseLoadOptions, CsvLoadOptions, JsonLoadOptions } from "./shared-options"
 
 /**
  * Handle returned from begin() for subsequent operations
@@ -53,35 +54,15 @@ export interface TransactionResult {
 }
 
 /**
- * Options for loading data within a transaction
+ * Options for loading data within a transaction.
+ * Extends {@link BaseLoadOptions}, {@link CsvLoadOptions}, and {@link JsonLoadOptions}
+ * for shared fields with StreamLoad.
  */
-export interface TransactionLoadOptions {
+export interface TransactionLoadOptions extends BaseLoadOptions, CsvLoadOptions, JsonLoadOptions {
   /** Target table (for multi-table transactions) */
   readonly table?: string
-  /** Column mapping */
-  readonly columns?: string[]
   /** Data format */
   readonly format?: "csv" | "json"
-  /** Column separator for CSV */
-  readonly columnSeparator?: string
-  /** Row delimiter for CSV */
-  readonly rowDelimiter?: string
-  /** JSON paths for extracting data */
-  readonly jsonPaths?: string[]
-  /** Strip outer JSON array */
-  readonly stripOuterArray?: boolean
-  /**
-   * Enable partial update mode for PRIMARY KEY tables.
-   * When true, only columns in the data payload will be updated.
-   * Requires StarRocks 2.2+
-   */
-  readonly partialUpdate?: boolean
-  /**
-   * Partial update mode: "row" (default) or "column".
-   * "column" mode is more efficient for updating few columns.
-   * Requires StarRocks 3.0+
-   */
-  readonly partialUpdateMode?: "row" | "column"
 }
 
 /**

@@ -1,6 +1,7 @@
 // packages/starrocks/src/services/stream-load.service.ts
 import { Context, Effect } from "effect"
 import type { StreamLoadError } from "../errors"
+import type { BaseLoadOptions, CsvLoadOptions } from "./shared-options"
 
 /**
  * Result from a Stream Load operation
@@ -43,38 +44,29 @@ export interface RetryConfig {
 }
 
 /**
- * Options for Stream Load operations
+ * Options for Stream Load operations.
+ * Extends {@link BaseLoadOptions} for shared column/partial-update fields.
  */
-export interface StreamLoadOptions {
+export interface StreamLoadOptions extends BaseLoadOptions {
   /** Target database */
   readonly database: string
   /** Target table */
   readonly table: string
   /** Unique label (auto-generated if not provided) */
   readonly label?: string
-  /** Column mapping */
-  readonly columns?: string[]
   /** Timeout in seconds (default: 600) */
   readonly timeout?: number
   /** Max filter ratio 0-1 (default: 0) */
   readonly maxFilterRatio?: number
-  /** Enable partial update for PRIMARY KEY tables (only updates specified columns) */
-  readonly partialUpdate?: boolean
-  /** Partial update mode: 'row' (default, real-time) or 'column' (batch) */
-  readonly partialUpdateMode?: "row" | "column"
   /** Retry configuration for transient failures */
   readonly retry?: RetryConfig
 }
 
 /**
- * Options for CSV loading
+ * Options for CSV loading.
+ * Extends {@link CsvLoadOptions} for shared separator fields.
  */
-export interface StreamLoadCsvOptions extends StreamLoadOptions {
-  /** Column separator (default: comma) */
-  readonly columnSeparator?: string
-  /** Row delimiter (default: newline) */
-  readonly rowDelimiter?: string
-}
+export interface StreamLoadCsvOptions extends StreamLoadOptions, CsvLoadOptions {}
 
 /**
  * StreamLoad service interface (port)

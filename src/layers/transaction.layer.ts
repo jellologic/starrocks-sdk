@@ -8,6 +8,7 @@ import {
 } from "../services/transaction.service"
 import { TransactionError } from "../errors"
 import { StarRocksConfig } from "../config/starrocks.config"
+import { buildLoadHeaders } from "../services/shared-options"
 
 /**
  * Parse and validate transaction response from StarRocks.
@@ -254,16 +255,15 @@ export const TransactionLive = Layer.scoped(
           // Determine strip_outer_array: respect explicit option, default to true for array data
           const stripOuterArray = options?.stripOuterArray ?? Array.isArray(data)
 
+          const loadHeaders = buildLoadHeaders({
+            ...options,
+            format,
+            stripOuterArray,
+          })
+
           const headers = makeHeaders(handle.label, handle.database, table, {
             "Content-Type": "text/plain",
-            ...(format === "json" && { format: "json" }),
-            ...(format === "json" && stripOuterArray && { strip_outer_array: "true" }),
-            ...(format === "json" && options?.jsonPaths && { jsonpaths: JSON.stringify(options.jsonPaths) }),
-            ...(options?.columns && { columns: options.columns.join(", ") }),
-            ...(options?.columnSeparator && { column_separator: options.columnSeparator }),
-            ...(options?.rowDelimiter && { row_delimiter: options.rowDelimiter }),
-            ...(options?.partialUpdate && { partial_update: "true" }),
-            ...(options?.partialUpdateMode && { partial_update_mode: options.partialUpdateMode }),
+            ...loadHeaders,
           })
 
           const response = yield* Effect.tryPromise({
