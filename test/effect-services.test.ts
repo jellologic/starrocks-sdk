@@ -455,7 +455,7 @@ describe("Effect Services Integration", () => {
       expect(result.numberLoadedRows).toBe(2)
     })
 
-    test("should fail on duplicate label", async () => {
+    test("should fail on duplicate label with status field", async () => {
       const label = uniqueLabel("effect_dup")
 
       const program = Effect.gen(function* () {
@@ -487,6 +487,8 @@ describe("Effect Services Integration", () => {
       )
 
       expect(result).toBeInstanceOf(TransactionError)
+      // Phase 1: status field should be populated
+      expect((result as TransactionError).status).toBe("LABEL_ALREADY_EXISTS")
     })
 
     test("should fail on commit of non-existent transaction", async () => {
@@ -517,7 +519,7 @@ describe("Effect Services Integration", () => {
       expect(result).toBeInstanceOf(TransactionError)
     })
 
-    test("should report transaction metrics", async () => {
+    test("should report transaction metrics with numberTotalRows", async () => {
       const label = uniqueLabel("effect_metrics")
 
       const program = Effect.gen(function* () {
@@ -544,6 +546,95 @@ describe("Effect Services Integration", () => {
       expect(result.label).toBe(label)
       expect(typeof result.numberLoadedRows).toBe("number")
       expect(typeof result.loadBytes).toBe("number")
+      // Phase 1: numberTotalRows should be present
+      expect(typeof result.numberTotalRows).toBe("number")
+    })
+
+    test("should return TransactionResult from load()", async () => {
+      const label = uniqueLabel("effect_load_result")
+
+      const program = Effect.gen(function* () {
+        const tx = yield* Transaction
+
+        const handle = yield* tx.begin({
+          database: TEST_DATABASE,
+          table: "effect_test_events",
+          label,
+        })
+
+        // Phase 2: load() now returns TransactionResult
+        const loadResult = yield* tx.load(handle, [
+          { id: 500, name: "Load Result 1", value: 500.0 },
+          { id: 501, name: "Load Result 2", value: 501.0 },
+        ])
+
+        expect(loadResult.status).toBe("OK")
+        expect(loadResult.txnId).toBeGreaterThan(0)
+        expect(loadResult.label).toBeTruthy()
+
+        yield* tx.commit(handle)
+        return loadResult
+      })
+
+      const result = await Effect.runPromise(program.pipe(Effect.provide(TransactionTest)))
+      expect(result.status).toBe("OK")
+    })
+
+    test("withTransaction should commit on success", async () => {
+      const label = uniqueLabel("effect_with_txn")
+
+      const program = Effect.gen(function* () {
+        const tx = yield* Transaction
+
+        const value = yield* tx.withTransaction(
+          { database: TEST_DATABASE, table: "effect_test_events", label },
+          (handle) =>
+            Effect.gen(function* () {
+              yield* tx.load(handle, [
+                { id: 600, name: "WithTxn 1", value: 600.0 },
+                { id: 601, name: "WithTxn 2", value: 601.0 },
+              ])
+              return "user-value"
+            })
+        )
+
+        return value
+      })
+
+      const result = await Effect.runPromise(program.pipe(Effect.provide(TransactionTest)))
+      // Should return user's value
+      expect(result).toBe("user-value")
+    })
+
+    test("withTransaction should abort on user function failure", async () => {
+      const label = uniqueLabel("effect_with_txn_fail")
+
+      const program = Effect.gen(function* () {
+        const tx = yield* Transaction
+
+        yield* tx.withTransaction(
+          { database: TEST_DATABASE, table: "effect_test_events", label },
+          (handle) =>
+            Effect.gen(function* () {
+              yield* tx.load(handle, [
+                { id: 700, name: "Will abort", value: 700.0 },
+              ])
+              // Simulate user error
+              return yield* Effect.fail(new Error("user error"))
+            })
+        )
+      })
+
+      const result = await Effect.runPromise(
+        program.pipe(
+          Effect.provide(TransactionTest),
+          Effect.catchAll((e) => Effect.succeed(e))
+        )
+      )
+
+      // Should propagate original user error, not abort error
+      expect(result).toBeInstanceOf(Error)
+      expect((result as Error).message).toBe("user error")
     })
   })
 })
