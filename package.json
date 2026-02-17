@@ -92,10 +92,7 @@
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "test:integration": "bun test --timeout 30000",
-    "docs:pull": "rm -rf .starrocks-docs && mkdir -p .starrocks-docs && cd .starrocks-docs && git init && git remote add origin https://github.com/StarRocks/starrocks.git && git sparse-checkout set docs/en && git pull origin main --depth 1 && cp -r docs/en ../._sr-docs-tmp && cd .. && rm -rf .starrocks-docs && mv ._sr-docs-tmp .starrocks-docs && echo 'StarRocks docs pulled to .starrocks-docs/'",
-    "ci":"curl -fsSL https://claude.ai/install.sh | bash",
-    "c": "claude --dangerously-skip-permissions"
-
+    "docs:pull": "rm -rf .starrocks-docs && mkdir -p .starrocks-docs && cd .starrocks-docs && git init && git remote add origin https://github.com/StarRocks/starrocks.git && git sparse-checkout set docs/en && git pull origin main --depth 1 && cp -r docs/en ../._sr-docs-tmp && cd .. && rm -rf .starrocks-docs && mv ._sr-docs-tmp .starrocks-docs && echo 'StarRocks docs pulled to .starrocks-docs/'"
   },
   "dependencies": {
     "@effect/schema": "^0.75.5",

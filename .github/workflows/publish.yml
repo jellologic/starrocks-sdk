@@ -28,7 +28,7 @@ jobs:
           scope: "@jellologic"
 
       - name: Install dependencies
-        run: bun install
+        run: bun install --frozen-lockfile
 
       - name: Build
         run: bun run clean && bun run build
