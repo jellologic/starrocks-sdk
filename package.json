@@ -38,6 +38,22 @@
       "types": "./dist/schema/index.d.ts",
       "default": "./dist/schema/index.js"
     },
+    "./schema/columns": {
+      "types": "./dist/schema/columns.d.ts",
+      "default": "./dist/schema/columns.js"
+    },
+    "./schema/expressions": {
+      "types": "./dist/schema/expressions.d.ts",
+      "default": "./dist/schema/expressions.js"
+    },
+    "./schema/query-builder": {
+      "types": "./dist/schema/query-builder.d.ts",
+      "default": "./dist/schema/query-builder.js"
+    },
+    "./schema/knex-builder": {
+      "types": "./dist/schema/knex-builder.d.ts",
+      "default": "./dist/schema/knex-builder.js"
+    },
     "./drizzle-schema": {
       "types": "./dist/drizzle-schema.d.ts",
       "default": "./dist/drizzle-schema.js"
@@ -49,6 +65,10 @@
     "./config": {
       "types": "./dist/config/starrocks.config.d.ts",
       "default": "./dist/config/starrocks.config.js"
+    },
+    "./services": {
+      "types": "./dist/services/shared-options.d.ts",
+      "default": "./dist/services/shared-options.js"
     },
     "./package.json": "./package.json"
   },
