@@ -23,12 +23,31 @@ export interface BooleanExpression extends Expression<boolean> {}
 // ============================================================================
 
 /**
- * Tagged template literal for raw SQL expressions
+ * Tagged template literal for SQL expressions with automatic parameterization.
+ *
+ * Interpolated values are handled safely:
+ * - **Plain values** (strings, numbers, etc.) become `?` placeholders with parameterized binding
+ * - **ColumnRef** values are inlined as qualified column names (trusted internal type)
+ * - **Expression** values are inlined with their own SQL and merged parameters
+ *
+ * This means `sql\`status = ${userInput}\`` is safe — the value is parameterized.
+ *
+ * **Warning**: Do NOT build SQL via string concatenation and pass it in.
+ * Use the template tag directly, or use type-safe helpers like `eq()`, `gt()`, `inArray()`.
  *
  * @example
  * ```typescript
+ * // Safe — value is parameterized as ?
+ * sql`status = ${status}`
+ *
+ * // Safe — column reference is inlined as qualified name
+ * sql`${table.columns.status} = ${status}`
+ *
+ * // Safe — nested expressions are composed
+ * sql`COALESCE(${col}, 0) > ${threshold}`
+ *
+ * // For static SQL with no user input
  * sql`NOW() - INTERVAL 7 DAY`
- * sql`COALESCE(${col}, 0)`
  * ```
  */
 export function sql(
