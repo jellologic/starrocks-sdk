@@ -7,6 +7,9 @@ Type-safe StarRocks SDK for TypeScript with Effect.ts integration. Schema DSL, S
 [![StarRocks](https://img.shields.io/badge/StarRocks-3.x-orange)](https://www.starrocks.io/)
 [![Bun](https://img.shields.io/badge/Bun-1.x-black?logo=bun)](https://bun.sh/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-green)](LICENSE)
+[![Stability: Beta](https://img.shields.io/badge/Stability-Beta-yellow)](https://github.com/jellologic/starrocks-sdk)
+
+> **ESM-only** — This package is published as ES Modules only. It requires Node.js 18+ or Bun 1.x with `"type": "module"` in your `package.json`.
 
 ## Features
 
@@ -881,6 +884,17 @@ import { ... } from "@jellologic/starrocks-sdk/migrations"
 import { ... } from "@jellologic/starrocks-sdk/data-archive"
 import { ... } from "@jellologic/starrocks-sdk/materialized-views"
 ```
+
+## Compatibility
+
+| Dependency | Required Version | Notes |
+|------------|-----------------|-------|
+| StarRocks | 3.0+ | Tested with 3.5-latest in CI |
+| Node.js | 18+ | ESM-only (`"type": "module"`) |
+| Bun | 1.x | Primary runtime for development/testing |
+| TypeScript | 5.0+ | Strict mode recommended |
+| Effect.ts | 3.x | Core dependency for service/layer architecture |
+| mysql2 | 3.x | Required for Query Builder, Drizzle, and MV operations |
 
 ## API Reference
 
