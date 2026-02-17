@@ -154,6 +154,34 @@ function validateLoadOptions(
 }
 
 /**
+ * Default maximum recommended payload size in bytes (100MB).
+ * Payloads above this size trigger a warning log.
+ */
+const MAX_RECOMMENDED_PAYLOAD_BYTES = 100 * 1024 * 1024
+
+/**
+ * Safely serialize objects to JSON with descriptive error handling.
+ * Catches common serialization failures (circular refs, BigInt) and
+ * produces a StreamLoadError instead of a generic JSON error.
+ */
+function safeJsonStringify(
+  objects: Record<string, unknown>[],
+  table: string
+): Effect.Effect<string, StreamLoadError> {
+  return Effect.try({
+    try: () => JSON.stringify(objects),
+    catch: (e) => {
+      const message = e instanceof TypeError && e.message.includes("circular")
+        ? "Cannot serialize objects with circular references"
+        : e instanceof TypeError && e.message.includes("BigInt")
+          ? "Cannot serialize BigInt values — convert to string or number before loading"
+          : `JSON serialization failed: ${e instanceof Error ? e.message : String(e)}`
+      return new StreamLoadError({ table, message })
+    },
+  })
+}
+
+/**
  * Generate unique label for stream load
  */
 function generateLabel(): string {
@@ -322,6 +350,15 @@ export const StreamLoadLive = Layer.scoped(
           )
         }
 
+        // Warn on silent data loss: all rows filtered likely means schema mismatch
+        if (parsed.numberLoadedRows === 0 && parsed.numberFilteredRows > 0) {
+          yield* Effect.logWarning("All rows were filtered — possible schema mismatch", {
+            table: options.table,
+            numberFilteredRows: parsed.numberFilteredRows,
+            errorUrl: parsed.errorUrl,
+          })
+        }
+
         return parsed
       })
 
@@ -397,7 +434,16 @@ export const StreamLoadLive = Layer.scoped(
           }
 
           const columns = Object.keys(objects[0] as Record<string, unknown>)
-          const json = JSON.stringify(objects)
+          const json = yield* safeJsonStringify(objects, options.table)
+
+          // Warn on large payloads that may cause memory pressure or timeouts
+          if (json.length > MAX_RECOMMENDED_PAYLOAD_BYTES) {
+            yield* Effect.logWarning("Large payload detected — consider batching", {
+              table: options.table,
+              payloadSizeMB: Math.round(json.length / 1024 / 1024),
+              rowCount: objects.length,
+            })
+          }
 
           return yield* doLoad(json, {
             ...options,
