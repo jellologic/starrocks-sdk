@@ -9,7 +9,8 @@
     "ghcr.io/shyim/devcontainers-features/bun:0": {},
     "ghcr.io/coder/devcontainer-features/code-server:1": {
       "port": 13337,
-      "host": "0.0.0.0"
+      "host": "0.0.0.0",
+      "auth": "none"
     }
   },
   "postCreateCommand": "bun install",
