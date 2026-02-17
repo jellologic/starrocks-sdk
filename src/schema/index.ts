@@ -54,6 +54,7 @@ export {
   // Table
   starrocksTable,
   generateCreateTableSQL,
+  flattenProperties,
   type Table,
   type TableWithRefs,
   type ColumnRef,
@@ -85,6 +86,10 @@ export {
   type RangePartitionConfig,
   type ListPartitionConfig,
   type ExpressionPartitionConfig,
+
+  // Sort Key
+  sortKey,
+  type SortKeyConfig,
 
   // Indexes
   bitmapIndex,

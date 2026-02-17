@@ -1491,7 +1491,7 @@ describe("Table Builder Edge Cases", () => {
       }));
 
       const sql = generateCreateTableSQL(bloomTable);
-      expect(sql).toContain('"bloom_filter_columns" = "["name","email"]"');
+      expect(sql).toContain('"bloom_filter_columns" = "name,email"');
     });
   });
 

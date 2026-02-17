@@ -36,6 +36,9 @@ export interface Column<
   readonly length?: number;
   readonly precision?: number;
   readonly scale?: number;
+  readonly columnComment?: string;
+  readonly isAutoIncrement?: boolean;
+  readonly generatedExpr?: string;
 
   /** Mark column as NOT NULL */
   notNull(): Column<T, TName, true, TDefault>;
@@ -45,6 +48,15 @@ export interface Column<
 
   /** Set aggregate function (for AGGREGATE KEY tables) */
   aggregate(fn: AggregateFunction): Column<T, TName, TNotNull, TDefault>;
+
+  /** Set column comment */
+  comment(text: string): Column<T, TName, TNotNull, TDefault>;
+
+  /** Mark column as AUTO_INCREMENT (only valid on BIGINT) */
+  autoIncrement(): Column<T, TName, TNotNull, TDefault>;
+
+  /** Define as a generated column with the given SQL expression */
+  generatedAs(expr: string): Column<T, TName, TNotNull, TDefault>;
 }
 
 /** Infer the TypeScript type from a column */
@@ -74,46 +86,57 @@ class ColumnBuilder<
     readonly aggregateFunc?: AggregateFunction,
     readonly length?: number,
     readonly precision?: number,
-    readonly scale?: number
+    readonly scale?: number,
+    readonly columnComment?: string,
+    readonly isAutoIncrement?: boolean,
+    readonly generatedExpr?: string
   ) {}
 
-  notNull(): Column<T, TName, true, TDefault> {
-    return new ColumnBuilder<T, TName, true, TDefault>(
+  private clone(overrides: Partial<{
+    isNotNull: boolean;
+    defaultValue: T | string;
+    aggregateFunc: AggregateFunction;
+    columnComment: string;
+    isAutoIncrement: boolean;
+    generatedExpr: string;
+  }> = {}): ColumnBuilder<T, TName, any, any> {
+    return new ColumnBuilder(
       this.name,
       this.dataType,
-      true,
-      this.defaultValue,
-      this.aggregateFunc,
+      overrides.isNotNull ?? this.isNotNull,
+      "defaultValue" in overrides ? overrides.defaultValue : this.defaultValue,
+      overrides.aggregateFunc ?? this.aggregateFunc,
       this.length,
       this.precision,
-      this.scale
+      this.scale,
+      overrides.columnComment ?? this.columnComment,
+      overrides.isAutoIncrement ?? this.isAutoIncrement,
+      overrides.generatedExpr ?? this.generatedExpr
     );
+  }
+
+  notNull(): Column<T, TName, true, TDefault> {
+    return this.clone({ isNotNull: true }) as any;
   }
 
   default(value: T | string): Column<T, TName, TNotNull, true> {
-    return new ColumnBuilder<T, TName, TNotNull, true>(
-      this.name,
-      this.dataType,
-      this.isNotNull,
-      value,
-      this.aggregateFunc,
-      this.length,
-      this.precision,
-      this.scale
-    );
+    return this.clone({ defaultValue: value }) as any;
   }
 
   aggregate(fn: AggregateFunction): Column<T, TName, TNotNull, TDefault> {
-    return new ColumnBuilder<T, TName, TNotNull, TDefault>(
-      this.name,
-      this.dataType,
-      this.isNotNull,
-      this.defaultValue,
-      fn,
-      this.length,
-      this.precision,
-      this.scale
-    );
+    return this.clone({ aggregateFunc: fn }) as any;
+  }
+
+  comment(text: string): Column<T, TName, TNotNull, TDefault> {
+    return this.clone({ columnComment: text }) as any;
+  }
+
+  autoIncrement(): Column<T, TName, TNotNull, TDefault> {
+    return this.clone({ isAutoIncrement: true }) as any;
+  }
+
+  generatedAs(expr: string): Column<T, TName, TNotNull, TDefault> {
+    return this.clone({ generatedExpr: expr }) as any;
   }
 }
 

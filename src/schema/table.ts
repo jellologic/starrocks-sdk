@@ -73,12 +73,12 @@ export type DistributionType = "HASH" | "RANDOM";
 export interface HashDistributionConfig {
   type: "HASH";
   columns: string[];
-  buckets: number;
+  buckets?: number;
 }
 
 export interface RandomDistributionConfig {
   type: "RANDOM";
-  buckets: number;
+  buckets?: number;
 }
 
 export type DistributionConfig = HashDistributionConfig | RandomDistributionConfig;
@@ -86,21 +86,21 @@ export type DistributionConfig = HashDistributionConfig | RandomDistributionConf
 /** HASH distribution by column(s) */
 export function hash<T extends Column<any, any, any, any> | Column<any, any, any, any>[]>(
   columns: T,
-  config: { buckets: number }
+  config?: { buckets?: number }
 ): HashDistributionConfig {
   const cols = Array.isArray(columns) ? columns : [columns];
   return {
     type: "HASH",
     columns: cols.map((c) => c.name),
-    buckets: config.buckets,
+    buckets: config?.buckets,
   };
 }
 
 /** RANDOM distribution */
-export function random(config: { buckets: number }): RandomDistributionConfig {
+export function random(config?: { buckets?: number }): RandomDistributionConfig {
   return {
     type: "RANDOM",
-    buckets: config.buckets,
+    buckets: config?.buckets,
   };
 }
 
@@ -198,6 +198,12 @@ export interface TableProperties {
     prefix?: string;
     buckets?: number;
   };
+  compression?: "LZ4" | "ZSTD" | "ZLIB" | "SNAPPY";
+  write_quorum?: "MAJORITY" | "ONE" | "ALL";
+  replicated_storage?: boolean;
+  fast_schema_evolution?: boolean;
+  storage_cooldown_ttl?: string;
+  bucket_size?: number;
   [key: string]: unknown;
 }
 
@@ -360,6 +366,25 @@ export function generateDropIndexSQL(tableName: string, indexName: string): stri
 }
 
 // ============================================================================
+// Sort Key (ORDER BY)
+// ============================================================================
+
+export interface SortKeyConfig {
+  _kind: "sortKey";
+  columns: string[];
+}
+
+/** Define a sort key (ORDER BY) for the table */
+export function sortKey<T extends Column<any, any, any, any>[]>(
+  ...columns: T
+): SortKeyConfig {
+  return {
+    _kind: "sortKey",
+    columns: columns.map((c) => c.name),
+  };
+}
+
+// ============================================================================
 // Table Config
 // ============================================================================
 
@@ -369,6 +394,8 @@ export interface TableConfig {
   partition?: PartitionConfig;
   properties?: TableProperties;
   indexes?: IndexConfig[];
+  orderBy?: string[];
+  comment?: string;
 }
 
 // ============================================================================
@@ -509,7 +536,19 @@ function normalizeTableConfig(raw: Record<string, unknown>): TableConfig {
   const result: TableConfig = {};
 
   for (const [k, v] of Object.entries(raw)) {
+    // Handle string values: comment
+    if (k === "comment" && typeof v === "string") {
+      result.comment = v;
+      continue;
+    }
+
     if (!v || typeof v !== "object") continue;
+
+    // Check for SortKeyConfig: { _kind: "sortKey", columns: [...] }
+    if ("_kind" in v && (v as { _kind: string })._kind === "sortKey") {
+      result.orderBy = (v as SortKeyConfig).columns;
+      continue;
+    }
 
     // Check for KeyConfig: { type: "PRIMARY"|..., columns: [...] }
     if (
@@ -521,10 +560,9 @@ function normalizeTableConfig(raw: Record<string, unknown>): TableConfig {
       continue;
     }
 
-    // Check for DistributionConfig: { type: "HASH"|"RANDOM", buckets: n }
+    // Check for DistributionConfig: { type: "HASH"|"RANDOM" }
     if (
       "type" in v &&
-      "buckets" in v &&
       DIST_TYPES.has((v as { type: string }).type)
     ) {
       result.distribution = v as DistributionConfig;
@@ -574,6 +612,39 @@ function normalizeTableConfig(raw: Record<string, unknown>): TableConfig {
 // ============================================================================
 
 /**
+ * Flatten a properties object for StarRocks PROPERTIES serialization.
+ * - Nested objects are flattened with dot-separated keys: `{ dynamic_partition: { enable: true } }` → `"dynamic_partition.enable" = "true"`
+ * - Arrays are joined with commas: `{ bloom_filter_columns: ["a", "b"] }` → `"bloom_filter_columns" = "a,b"`
+ * - Booleans are converted to `"true"`/`"false"` strings
+ * - Numbers are converted to strings
+ */
+export function flattenProperties(
+  obj: Record<string, unknown>,
+  prefix?: string
+): Array<[string, string]> {
+  const result: Array<[string, string]> = [];
+
+  for (const [key, value] of Object.entries(obj)) {
+    if (value === undefined) continue;
+    const fullKey = prefix ? `${prefix}.${key}` : key;
+
+    if (Array.isArray(value)) {
+      result.push([fullKey, value.join(",")]);
+    } else if (value !== null && typeof value === "object") {
+      result.push(
+        ...flattenProperties(value as Record<string, unknown>, fullKey)
+      );
+    } else if (typeof value === "boolean") {
+      result.push([fullKey, value ? "true" : "false"]);
+    } else {
+      result.push([fullKey, String(value)]);
+    }
+  }
+
+  return result;
+}
+
+/**
  * Generate CREATE TABLE SQL from a table definition.
  * All identifiers (table names, column names) are properly quoted with backticks
  * to safely handle reserved words and special characters.
@@ -586,6 +657,15 @@ export function generateCreateTableSQL<T extends Table<any, any>>(
 
   // Column definitions - quote all column names
   const columnDefs = (Object.values(table.columns) as Column<any, any, any, any>[]).map((col) => {
+    // Generated columns use a special syntax: `col type AS (expr)`
+    if (col.generatedExpr) {
+      let def = `  ${quoteIdentifier(col.name)} ${col.dataType} AS (${col.generatedExpr})`;
+      if (col.columnComment) {
+        def += ` COMMENT '${escapeString(col.columnComment)}'`;
+      }
+      return def;
+    }
+
     let def = `  ${quoteIdentifier(col.name)} ${col.dataType}`;
     if (col.aggregateFunc) {
       def += ` ${col.aggregateFunc}`;
@@ -593,15 +673,36 @@ export function generateCreateTableSQL<T extends Table<any, any>>(
     if (col.isNotNull) {
       def += " NOT NULL";
     }
+    if (col.isAutoIncrement) {
+      def += " AUTO_INCREMENT";
+    }
     if (col.defaultValue !== undefined) {
       def += ` DEFAULT ${formatDefaultValue(col.defaultValue)}`;
+    }
+    if (col.columnComment) {
+      def += ` COMMENT '${escapeString(col.columnComment)}'`;
     }
     return def;
   });
 
+  // Inline bitmap index definitions (inside column list)
+  const inlineBitmapDefs: string[] = [];
+  if (table.config.indexes) {
+    for (const idx of table.config.indexes) {
+      if (idx.type === "BITMAP") {
+        let idxDef = `  INDEX ${quoteIdentifier(idx.name)} (${quoteIdentifier(idx.column)}) USING BITMAP`;
+        if (idx.comment) {
+          idxDef += ` COMMENT '${escapeString(idx.comment)}'`;
+        }
+        inlineBitmapDefs.push(idxDef);
+      }
+    }
+  }
+
   // Quote table name
   lines.push(`CREATE TABLE IF NOT EXISTS ${quoteIdentifier(tableName)} (`);
-  lines.push(columnDefs.join(",\n"));
+  const allDefs = [...columnDefs, ...inlineBitmapDefs];
+  lines.push(allDefs.join(",\n"));
   lines.push(")");
 
   // Key type - REQUIRED for all StarRocks tables
@@ -615,6 +716,11 @@ export function generateCreateTableSQL<T extends Table<any, any>>(
   const keyType = table.config.key.type;
   const keyCols = table.config.key.columns.map(quoteIdentifier).join(", ");
   lines.push(`${keyType} KEY (${keyCols})`);
+
+  // Table comment (must come after key type in StarRocks syntax)
+  if (table.config.comment) {
+    lines.push(`COMMENT "${escapeDoubleQuoted(table.config.comment)}"`)
+  }
 
   // Partition - quote column names
   if (table.config.partition) {
@@ -660,22 +766,27 @@ export function generateCreateTableSQL<T extends Table<any, any>>(
     const d = table.config.distribution;
     if (d.type === "HASH") {
       const distCols = d.columns.map(quoteIdentifier).join(", ");
-      lines.push(`DISTRIBUTED BY HASH(${distCols}) BUCKETS ${d.buckets}`);
+      let distLine = `DISTRIBUTED BY HASH(${distCols})`;
+      if (d.buckets !== undefined) distLine += ` BUCKETS ${d.buckets}`;
+      lines.push(distLine);
     } else {
-      lines.push(`DISTRIBUTED BY RANDOM BUCKETS ${d.buckets}`);
+      let distLine = `DISTRIBUTED BY RANDOM`;
+      if (d.buckets !== undefined) distLine += ` BUCKETS ${d.buckets}`;
+      lines.push(distLine);
     }
+  }
+
+  // Order By (Sort Key)
+  if (table.config.orderBy && table.config.orderBy.length > 0) {
+    const orderCols = table.config.orderBy.map(quoteIdentifier).join(", ");
+    lines.push(`ORDER BY (${orderCols})`);
   }
 
   // Properties
   if (table.config.properties) {
-    const props = Object.entries(table.config.properties)
-      .filter(([, v]) => v !== undefined)
-      .map(([k, v]) => {
-        if (typeof v === "object") {
-          return `"${k}" = "${JSON.stringify(v)}"`;
-        }
-        return `"${k}" = "${v}"`;
-      })
+    const flattened = flattenProperties(table.config.properties);
+    const props = flattened
+      .map(([k, v]) => `"${k}" = "${v}"`)
       .join(", ");
     if (props) {
       lines.push(`PROPERTIES (${props})`);
