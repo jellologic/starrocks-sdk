@@ -32,7 +32,19 @@ export interface StreamLoadResult {
 }
 
 /**
- * Retry configuration for transient failures
+ * Retry configuration for transient failures.
+ *
+ * Uses exponential backoff with jitter, capped at maxDelayMs.
+ * Only network/server errors are retried — data format errors and auth failures are not.
+ *
+ * With defaults (maxRetries=3, initialDelayMs=1000, maxDelayMs=30000):
+ * - Retry 1: ~1s delay
+ * - Retry 2: ~2s delay
+ * - Retry 3: ~4s delay
+ * - Total max wait: ~7s (plus request time)
+ *
+ * Each retry uses a unique label suffix (e.g., `my-label_retry2`) to avoid
+ * "label already exists" collisions on StarRocks.
  */
 export interface RetryConfig {
   /** Maximum number of retry attempts (default: 3) */

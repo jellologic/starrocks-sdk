@@ -145,7 +145,14 @@ function validateHttpResponse(
 }
 
 /**
- * Check if an error is retryable
+ * Determines if a TransactionError is retryable.
+ *
+ * Retryable conditions:
+ * - **HTTP status**: 429 (Too Many Requests), 500, 502, 503, 504
+ * - **Network errors**: timeout, connection refused/reset, socket hang up
+ * - **Server transient**: service unavailable, temporarily unavailable
+ *
+ * Non-retryable: any 4xx status (except 429), transaction-state errors, auth failures.
  */
 function isRetryableError(error: TransactionError): boolean {
   // HTTP status-based retry: 429, 500, 502, 503, 504 are retryable
@@ -197,7 +204,8 @@ export const TransactionLive = Layer.scoped(
       ...extra,
     })
 
-    // Retry schedule for transient failures (3 retries, exponential backoff)
+    // Retry schedule: exponential backoff (1s, 2s, 4s) capped at 30s, max 3 retries.
+    // Schedule.either(spaced(30s)) caps the delay — either() takes the minimum of both.
     const retrySchedule = Schedule.exponential(Duration.millis(1000), 2).pipe(
       Schedule.either(Schedule.spaced(Duration.millis(30_000))),
       Schedule.compose(Schedule.recurs(3)),

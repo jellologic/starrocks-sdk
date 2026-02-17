@@ -18,7 +18,15 @@ const DEFAULT_INITIAL_DELAY_MS = 1000
 const DEFAULT_MAX_DELAY_MS = 30000
 
 /**
- * Check if an error is retryable based on the error message or status
+ * Determines if a StreamLoadError is retryable.
+ *
+ * Retryable conditions:
+ * - **HTTP status**: 429 (Too Many Requests), 500, 502, 503, 504
+ * - **Network errors**: timeout, connection refused/reset, socket hang up
+ * - **Server transient**: service unavailable, rate limit, busy, try again
+ * - **StarRocks transient**: transaction not found (transient state during commit)
+ *
+ * Non-retryable: any 4xx status (except 429), data format errors, auth failures.
  */
 function isRetryableError(error: StreamLoadError): boolean {
   // HTTP status-based retry: 429, 500, 502, 503, 504 are retryable
@@ -45,15 +53,27 @@ function isRetryableError(error: StreamLoadError): boolean {
     "busy",
     "try again",
     "temporarily unavailable",
-    "transaction not found", // Transient state during commit
-    "label already exists", // Can retry with new label
+    "transaction not found",
   ]
 
   return retryablePatterns.some((pattern) => message.includes(pattern))
 }
 
 /**
- * Create a retry schedule with exponential backoff
+ * Create a retry schedule with exponential backoff capped at a maximum delay.
+ *
+ * Schedule behavior (with defaults):
+ * - Attempt 1: immediate
+ * - Retry 1: wait 1s
+ * - Retry 2: wait 2s
+ * - Retry 3: wait 4s
+ * - ...delays double each time, capped at maxDelayMs (default 30s)
+ *
+ * Only retries errors where {@link isRetryableError} returns true.
+ *
+ * Implementation note: `Schedule.either(spaced(maxDelay))` caps the exponential
+ * delay because `either` takes the minimum delay of both schedules. Once exponential
+ * exceeds maxDelay, `spaced(maxDelay)` provides the lower bound.
  */
 function createRetrySchedule(maxRetries: number, initialDelayMs: number, maxDelayMs: number) {
   return Schedule.exponential(Duration.millis(initialDelayMs), 2).pipe(
