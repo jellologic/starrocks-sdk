@@ -55,6 +55,9 @@ export const transactionMetrics = {
   /** Counter of transaction begins */
   begins: Metric.counter("starrocks.transaction.begins"),
 
+  /** Counter of transaction prepares */
+  prepares: Metric.counter("starrocks.transaction.prepares"),
+
   /** Counter of transaction commits */
   commits: Metric.counter("starrocks.transaction.commits"),
 

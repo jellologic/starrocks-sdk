@@ -17,6 +17,8 @@ export interface TransactionHandle {
   readonly table: string
   /** Whether this is a multi-table transaction */
   readonly multiTable: boolean
+  /** HTTP timeout in milliseconds (propagated from begin options) */
+  readonly timeoutMs?: number
 }
 
 /**
@@ -31,6 +33,8 @@ export interface TransactionResult {
   readonly status: "OK" | "FAILED"
   /** Status message */
   readonly message: string
+  /** Total number of rows in the load (loaded + filtered + unselected) */
+  readonly numberTotalRows?: number
   /** Number of rows loaded (after commit) */
   readonly numberLoadedRows?: number
   /** Number of rows filtered (after commit) */
@@ -84,6 +88,14 @@ export interface TransactionBeginOptions {
 }
 
 /**
+ * Options for the prepare phase of a transaction
+ */
+export interface TransactionPrepareOptions {
+  /** Time in seconds that the transaction stays in PREPARED state before timing out (default: 86400 = 24h) */
+  readonly preparedTimeout?: number
+}
+
+/**
  * Transaction service interface (port) for 2PC data loading
  */
 export interface TransactionService {
@@ -101,14 +113,15 @@ export interface TransactionService {
     handle: TransactionHandle,
     data: string | Record<string, unknown>[],
     options?: TransactionLoadOptions
-  ) => Effect.Effect<void, TransactionError>
+  ) => Effect.Effect<TransactionResult, TransactionError>
 
   /**
    * Prepare (pre-commit) a transaction - makes data durable
    * Returns metrics (row counts, bytes, timing) from StarRocks.
    */
   readonly prepare: (
-    handle: TransactionHandle
+    handle: TransactionHandle,
+    options?: TransactionPrepareOptions
   ) => Effect.Effect<TransactionResult, TransactionError>
 
   /**
@@ -124,6 +137,15 @@ export interface TransactionService {
   readonly abort: (
     handle: TransactionHandle
   ) => Effect.Effect<void, TransactionError>
+
+  /**
+   * Execute a function within a transaction with automatic commit/abort.
+   * Commits on success, aborts on failure (swallowing abort errors to preserve the original).
+   */
+  readonly withTransaction: <A, E>(
+    options: TransactionBeginOptions,
+    fn: (handle: TransactionHandle) => Effect.Effect<A, E>
+  ) => Effect.Effect<A, E | TransactionError>
 }
 
 /**

@@ -40,6 +40,7 @@ export function parseResponse(
         phase,
         txnId: typeof result.TxnId === "number" ? result.TxnId : undefined,
         cause: message || `Transaction ${phase} failed with status: ${status}`,
+        status,
       })
     )
   }
@@ -49,6 +50,7 @@ export function parseResponse(
     label: typeof result.Label === "string" ? result.Label : label,
     status: status === "OK" ? "OK" : "FAILED",
     message,
+    numberTotalRows: typeof result.NumberTotalRows === "number" ? result.NumberTotalRows : undefined,
     numberLoadedRows: typeof result.NumberLoadedRows === "number" ? result.NumberLoadedRows : undefined,
     numberFilteredRows: typeof result.NumberFilteredRows === "number" ? result.NumberFilteredRows : undefined,
     numberUnselectedRows: typeof result.NumberUnselectedRows === "number" ? result.NumberUnselectedRows : undefined,
@@ -215,214 +217,250 @@ export const TransactionLive = Layer.scoped(
       Schedule.whileInput((error: TransactionError) => isRetryableError(error))
     )
 
+    const begin: TransactionService["begin"] = (options) =>
+      Effect.gen(function* () {
+        yield* validateIdentifier(options.database, "database", options.label, "begin")
+        yield* validateIdentifier(options.table, "table", options.label, "begin")
+
+        const headers = makeHeaders(options.label, options.database, options.table, {
+          ...(options.timeout && { timeout: String(options.timeout) }),
+          ...(options.idleTimeout && { idle_transaction_timeout: String(options.idleTimeout) }),
+          ...(options.multiTable && { transaction_type: "multi" }),
+        })
+
+        const timeoutMs = options.timeout ? options.timeout * 1000 : DEFAULT_HTTP_TIMEOUT_MS
+        const response = yield* Effect.tryPromise({
+          try: () => fetch(`${baseUrl}/begin`, {
+            method: "POST",
+            headers,
+            signal: AbortSignal.timeout(timeoutMs),
+          }),
+          catch: (e) =>
+            new TransactionError({
+              label: options.label,
+              phase: "begin",
+              cause: e instanceof Error && e.name === "TimeoutError"
+                ? `HTTP request timed out after ${timeoutMs}ms`
+                : e instanceof Error ? e.message : "HTTP request failed",
+            }),
+        })
+
+        const result = yield* validateHttpResponse(response, options.label, "begin")
+
+        const parsed = yield* parseResponse(result, options.label, "begin")
+
+        yield* Metric.increment(transactionMetrics.begins)
+
+        return {
+          label: options.label,
+          txnId: parsed.txnId,
+          database: options.database,
+          table: options.table,
+          multiTable: options.multiTable ?? false,
+          timeoutMs,
+        } satisfies TransactionHandle
+      }).pipe(
+        Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+        Effect.retry(retrySchedule),
+        Effect.withSpan("starrocks.transaction.begin", {
+          attributes: { database: options.database, table: options.table, label: options.label },
+        }),
+      )
+
+    const load: TransactionService["load"] = (handle, data, options) =>
+      Effect.gen(function* () {
+        const table = options?.table ?? handle.table
+        const body = Array.isArray(data) ? JSON.stringify(data) : data
+        const format = options?.format ?? (Array.isArray(data) ? "json" : "csv")
+
+        // Determine strip_outer_array: respect explicit option, default to true for array data
+        const stripOuterArray = options?.stripOuterArray ?? Array.isArray(data)
+
+        const loadHeaders = buildLoadHeaders({
+          ...options,
+          format,
+          stripOuterArray,
+        })
+
+        const headers = makeHeaders(handle.label, handle.database, table, {
+          "Content-Type": "text/plain",
+          ...loadHeaders,
+        })
+
+        const loadTimeoutMs = handle.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS
+        const start = Date.now()
+        const response = yield* Effect.tryPromise({
+          try: () => fetch(`${baseUrl}/load`, {
+            method: "PUT",
+            headers,
+            body,
+            signal: AbortSignal.timeout(loadTimeoutMs),
+          }),
+          catch: (e) =>
+            new TransactionError({
+              label: handle.label,
+              phase: "load",
+              txnId: handle.txnId,
+              cause: e instanceof Error && e.name === "TimeoutError"
+                ? `HTTP request timed out after ${loadTimeoutMs}ms`
+                : e instanceof Error ? e.message : "HTTP request failed",
+            }),
+        })
+
+        const result = yield* validateHttpResponse(response, handle.label, "load", handle.txnId)
+
+        const parsed = yield* parseResponse(result, handle.label, "load")
+
+        yield* Metric.update(transactionMetrics.loadDuration, Date.now() - start)
+
+        return parsed
+      }).pipe(
+        Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+        Effect.retry(retrySchedule),
+        Effect.withSpan("starrocks.transaction.load", {
+          attributes: { database: handle.database, label: handle.label },
+        }),
+      )
+
+    const prepare: TransactionService["prepare"] = (handle, options) =>
+      Effect.gen(function* () {
+        const prepareTimeoutMs = handle.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS
+        const headers = makeHeaders(handle.label, handle.database, undefined, {
+          ...(handle.multiTable && { transaction_type: "multi" }),
+          ...(options?.preparedTimeout && { prepared_timeout: String(options.preparedTimeout) }),
+        })
+
+        const response = yield* Effect.tryPromise({
+          try: () => fetch(`${baseUrl}/prepare`, {
+            method: "POST",
+            headers,
+            signal: AbortSignal.timeout(prepareTimeoutMs),
+          }),
+          catch: (e) =>
+            new TransactionError({
+              label: handle.label,
+              phase: "prepare",
+              txnId: handle.txnId,
+              cause: e instanceof Error && e.name === "TimeoutError"
+                ? `HTTP request timed out after ${prepareTimeoutMs}ms`
+                : e instanceof Error ? e.message : "HTTP request failed",
+            }),
+        })
+
+        const result = yield* validateHttpResponse(response, handle.label, "prepare", handle.txnId)
+
+        const parsed = yield* parseResponse(result, handle.label, "prepare")
+
+        yield* Metric.increment(transactionMetrics.prepares)
+
+        return parsed
+      }).pipe(
+        Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+        Effect.retry(retrySchedule),
+        Effect.withSpan("starrocks.transaction.prepare", {
+          attributes: { database: handle.database, label: handle.label },
+        }),
+      )
+
+    const commit: TransactionService["commit"] = (handle) =>
+      Effect.gen(function* () {
+        const commitTimeoutMs = handle.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS
+        const headers = makeHeaders(handle.label, handle.database, undefined, {
+          ...(handle.multiTable && { transaction_type: "multi" }),
+        })
+
+        const response = yield* Effect.tryPromise({
+          try: () => fetch(`${baseUrl}/commit`, {
+            method: "POST",
+            headers,
+            signal: AbortSignal.timeout(commitTimeoutMs),
+          }),
+          catch: (e) =>
+            new TransactionError({
+              label: handle.label,
+              phase: "commit",
+              txnId: handle.txnId,
+              cause: e instanceof Error && e.name === "TimeoutError"
+                ? `HTTP request timed out after ${commitTimeoutMs}ms`
+                : e instanceof Error ? e.message : "HTTP request failed",
+            }),
+        })
+
+        const result = yield* validateHttpResponse(response, handle.label, "commit", handle.txnId)
+
+        const parsed = yield* parseResponse(result, handle.label, "commit")
+
+        yield* Metric.increment(transactionMetrics.commits)
+
+        return parsed
+      }).pipe(
+        Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+        Effect.retry(retrySchedule),
+        Effect.withSpan("starrocks.transaction.commit", {
+          attributes: { database: handle.database, label: handle.label },
+        }),
+      )
+
+    const abort: TransactionService["abort"] = (handle) =>
+      Effect.gen(function* () {
+        const abortTimeoutMs = handle.timeoutMs ?? DEFAULT_HTTP_TIMEOUT_MS
+        const headers = makeHeaders(handle.label, handle.database, undefined, {
+          ...(handle.multiTable && { transaction_type: "multi" }),
+        })
+
+        const response = yield* Effect.tryPromise({
+          try: () => fetch(`${baseUrl}/rollback`, {
+            method: "POST",
+            headers,
+            signal: AbortSignal.timeout(abortTimeoutMs),
+          }),
+          catch: (e) =>
+            new TransactionError({
+              label: handle.label,
+              phase: "abort",
+              txnId: handle.txnId,
+              cause: e instanceof Error && e.name === "TimeoutError"
+                ? `HTTP request timed out after ${abortTimeoutMs}ms`
+                : e instanceof Error ? e.message : "HTTP request failed",
+            }),
+        })
+
+        const result = yield* validateHttpResponse(response, handle.label, "abort", handle.txnId)
+
+        yield* parseResponse(result, handle.label, "abort")
+
+        yield* Metric.increment(transactionMetrics.aborts)
+      }).pipe(
+        Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+        Effect.retry(retrySchedule),
+        Effect.withSpan("starrocks.transaction.abort", {
+          attributes: { database: handle.database, label: handle.label },
+        }),
+      )
+
+    const withTransaction: TransactionService["withTransaction"] = (options, fn) =>
+      Effect.acquireUseRelease(
+        begin(options),
+        (handle) => fn(handle).pipe(
+          Effect.tap(() => commit(handle)),
+        ),
+        (handle, exit) =>
+          exit._tag === "Failure"
+            ? abort(handle).pipe(Effect.catchAll(() => Effect.void))
+            : Effect.void,
+      ).pipe(
+        Effect.withSpan("starrocks.transaction.withTransaction", {
+          attributes: { database: options.database, table: options.table, label: options.label },
+        }),
+      )
+
     return {
-      begin: (options) =>
-        Effect.gen(function* () {
-          yield* validateIdentifier(options.database, "database", options.label, "begin")
-          yield* validateIdentifier(options.table, "table", options.label, "begin")
-
-          const headers = makeHeaders(options.label, options.database, options.table, {
-            ...(options.timeout && { timeout: String(options.timeout) }),
-            ...(options.idleTimeout && { idle_transaction_timeout: String(options.idleTimeout) }),
-            ...(options.multiTable && { transaction_type: "multi" }),
-          })
-
-          const timeoutMs = options.timeout ? options.timeout * 1000 : DEFAULT_HTTP_TIMEOUT_MS
-          const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/begin`, {
-              method: "POST",
-              headers,
-              signal: AbortSignal.timeout(timeoutMs),
-            }),
-            catch: (e) =>
-              new TransactionError({
-                label: options.label,
-                phase: "begin",
-                cause: e instanceof Error && e.name === "TimeoutError"
-                  ? `HTTP request timed out after ${timeoutMs}ms`
-                  : e instanceof Error ? e.message : "HTTP request failed",
-              }),
-          })
-
-          const result = yield* validateHttpResponse(response, options.label, "begin")
-
-          const parsed = yield* parseResponse(result, options.label, "begin")
-
-          yield* Metric.increment(transactionMetrics.begins)
-
-          return {
-            label: options.label,
-            txnId: parsed.txnId,
-            database: options.database,
-            table: options.table,
-            multiTable: options.multiTable ?? false,
-          } satisfies TransactionHandle
-        }).pipe(
-          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
-          Effect.retry(retrySchedule),
-          Effect.withSpan("starrocks.transaction.begin", {
-            attributes: { database: options.database, table: options.table, label: options.label },
-          }),
-        ),
-
-      load: (handle, data, options) =>
-        Effect.gen(function* () {
-          const table = options?.table ?? handle.table
-          const body = Array.isArray(data) ? JSON.stringify(data) : data
-          const format = options?.format ?? (Array.isArray(data) ? "json" : "csv")
-
-          // Determine strip_outer_array: respect explicit option, default to true for array data
-          const stripOuterArray = options?.stripOuterArray ?? Array.isArray(data)
-
-          const loadHeaders = buildLoadHeaders({
-            ...options,
-            format,
-            stripOuterArray,
-          })
-
-          const headers = makeHeaders(handle.label, handle.database, table, {
-            "Content-Type": "text/plain",
-            ...loadHeaders,
-          })
-
-          const start = Date.now()
-          const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/load`, {
-              method: "PUT",
-              headers,
-              body,
-              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
-            }),
-            catch: (e) =>
-              new TransactionError({
-                label: handle.label,
-                phase: "load",
-                txnId: handle.txnId,
-                cause: e instanceof Error && e.name === "TimeoutError"
-                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
-                  : e instanceof Error ? e.message : "HTTP request failed",
-              }),
-          })
-
-          const result = yield* validateHttpResponse(response, handle.label, "load", handle.txnId)
-
-          yield* parseResponse(result, handle.label, "load")
-
-          yield* Metric.update(transactionMetrics.loadDuration, Date.now() - start)
-        }).pipe(
-          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
-          Effect.retry(retrySchedule),
-          Effect.withSpan("starrocks.transaction.load", {
-            attributes: { database: handle.database, label: handle.label },
-          }),
-        ),
-
-      prepare: (handle) =>
-        Effect.gen(function* () {
-          const headers = makeHeaders(handle.label, handle.database, undefined, {
-            ...(handle.multiTable && { transaction_type: "multi" }),
-          })
-
-          const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/prepare`, {
-              method: "POST",
-              headers,
-              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
-            }),
-            catch: (e) =>
-              new TransactionError({
-                label: handle.label,
-                phase: "prepare",
-                txnId: handle.txnId,
-                cause: e instanceof Error && e.name === "TimeoutError"
-                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
-                  : e instanceof Error ? e.message : "HTTP request failed",
-              }),
-          })
-
-          const result = yield* validateHttpResponse(response, handle.label, "prepare", handle.txnId)
-
-          return yield* parseResponse(result, handle.label, "prepare")
-        }).pipe(
-          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
-          Effect.retry(retrySchedule),
-          Effect.withSpan("starrocks.transaction.prepare", {
-            attributes: { database: handle.database, label: handle.label },
-          }),
-        ),
-
-      commit: (handle) =>
-        Effect.gen(function* () {
-          const headers = makeHeaders(handle.label, handle.database, undefined, {
-            ...(handle.multiTable && { transaction_type: "multi" }),
-          })
-
-          const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/commit`, {
-              method: "POST",
-              headers,
-              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
-            }),
-            catch: (e) =>
-              new TransactionError({
-                label: handle.label,
-                phase: "commit",
-                txnId: handle.txnId,
-                cause: e instanceof Error && e.name === "TimeoutError"
-                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
-                  : e instanceof Error ? e.message : "HTTP request failed",
-              }),
-          })
-
-          const result = yield* validateHttpResponse(response, handle.label, "commit", handle.txnId)
-
-          const parsed = yield* parseResponse(result, handle.label, "commit")
-
-          yield* Metric.increment(transactionMetrics.commits)
-
-          return parsed
-        }).pipe(
-          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
-          Effect.retry(retrySchedule),
-          Effect.withSpan("starrocks.transaction.commit", {
-            attributes: { database: handle.database, label: handle.label },
-          }),
-        ),
-
-      abort: (handle) =>
-        Effect.gen(function* () {
-          const headers = makeHeaders(handle.label, handle.database, undefined, {
-            ...(handle.multiTable && { transaction_type: "multi" }),
-          })
-
-          const response = yield* Effect.tryPromise({
-            try: () => fetch(`${baseUrl}/rollback`, {
-              method: "POST",
-              headers,
-              signal: AbortSignal.timeout(DEFAULT_HTTP_TIMEOUT_MS),
-            }),
-            catch: (e) =>
-              new TransactionError({
-                label: handle.label,
-                phase: "abort",
-                txnId: handle.txnId,
-                cause: e instanceof Error && e.name === "TimeoutError"
-                  ? `HTTP request timed out after ${DEFAULT_HTTP_TIMEOUT_MS}ms`
-                  : e instanceof Error ? e.message : "HTTP request failed",
-              }),
-          })
-
-          const result = yield* validateHttpResponse(response, handle.label, "abort", handle.txnId)
-
-          yield* parseResponse(result, handle.label, "abort")
-
-          yield* Metric.increment(transactionMetrics.aborts)
-        }).pipe(
-          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
-          Effect.withSpan("starrocks.transaction.abort", {
-            attributes: { database: handle.database, label: handle.label },
-          }),
-        ),
+      begin,
+      load,
+      prepare,
+      commit,
+      abort,
+      withTransaction,
     } satisfies TransactionService
   })
 )

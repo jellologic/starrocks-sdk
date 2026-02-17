@@ -321,6 +321,200 @@ describe("Transaction parseResponse", () => {
     expect(result.beginTxnTimeMs).toBe(10)
     expect(result.commitAndPublishTimeMs).toBe(35)
   })
+
+  test("includes status field on LABEL_ALREADY_EXISTS error", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "LABEL_ALREADY_EXISTS", Message: "Label dup_label already used" },
+        "dup_label",
+        "begin"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.status).toBe("LABEL_ALREADY_EXISTS")
+    expect(error.phase).toBe("begin")
+    expect(error.cause).toBe("Label dup_label already used")
+  })
+
+  test("includes status field on TXN_NOT_EXISTS error", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "TXN_NOT_EXISTS", TxnId: 999, Message: "Transaction not found" },
+        "missing_txn",
+        "commit"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.status).toBe("TXN_NOT_EXISTS")
+    expect(error.txnId).toBe(999)
+  })
+
+  test("includes status field on ANALYSIS_ERROR", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "ANALYSIS_ERROR", Message: "Column mismatch" },
+        "bad_schema",
+        "load"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.status).toBe("ANALYSIS_ERROR")
+    expect(error.cause).toBe("Column mismatch")
+  })
+
+  test("includes status field on INTERNAL_ERROR", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "INTERNAL_ERROR", Message: "Server crash" },
+        "int_err",
+        "prepare"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.status).toBe("INTERNAL_ERROR")
+    expect(error.phase).toBe("prepare")
+  })
+
+  test("uses default cause message when Message is empty", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "FAILED", Message: "" },
+        "no_msg",
+        "commit"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.cause).toContain("Transaction commit failed with status: FAILED")
+  })
+
+  test("uses default cause message when Message is missing", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "FAILED" },
+        "no_msg",
+        "abort"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.cause).toContain("Transaction abort failed with status: FAILED")
+  })
+
+  test("parses NumberTotalRows from successful response", async () => {
+    const result = await Effect.runPromise(
+      parseTransactionResponse(
+        {
+          Status: "OK",
+          TxnId: 200,
+          Label: "total_rows_test",
+          NumberTotalRows: 1000,
+          NumberLoadedRows: 990,
+          NumberFilteredRows: 10,
+        },
+        "total_rows_test",
+        "commit"
+      )
+    )
+
+    expect(result.numberTotalRows).toBe(1000)
+    expect(result.numberLoadedRows).toBe(990)
+    expect(result.numberFilteredRows).toBe(10)
+  })
+
+  test("numberTotalRows is undefined when not in response", async () => {
+    const result = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "OK", TxnId: 201, Label: "no_total" },
+        "no_total",
+        "begin"
+      )
+    )
+
+    expect(result.numberTotalRows).toBeUndefined()
+  })
+
+  test("handles non-numeric TxnId gracefully", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "FAILED", TxnId: "not_a_number", Message: "bad txn" },
+        "bad_txn",
+        "begin"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.txnId).toBeUndefined()
+  })
+
+  test("handles non-string Status gracefully", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: 123 },
+        "bad_status",
+        "begin"
+      ).pipe(Effect.flip)
+    )
+
+    // Non-string Status defaults to "FAILED" which is an error status
+    expect(error._tag).toBe("TransactionError")
+    expect(error.status).toBe("FAILED")
+  })
+
+  test("uses fallback label when Label is missing from response", async () => {
+    const result = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "OK", TxnId: 300 },
+        "fallback_label",
+        "begin"
+      )
+    )
+
+    expect(result.label).toBe("fallback_label")
+  })
+
+  test("preserves all timing fields", async () => {
+    const result = await Effect.runPromise(
+      parseTransactionResponse(
+        {
+          Status: "OK",
+          TxnId: 400,
+          Label: "timing",
+          StreamLoadPlanTimeMs: 15,
+          ReadDataTimeMs: 25,
+          WriteDataTimeMs: 35,
+        },
+        "timing",
+        "commit"
+      )
+    )
+
+    expect(result.streamLoadPlanTimeMs).toBe(15)
+    expect(result.readDataTimeMs).toBe(25)
+    expect(result.writeDataTimeMs).toBe(35)
+  })
+
+  test("parses response for all phases", async () => {
+    for (const phase of ["begin", "load", "prepare", "commit", "abort"] as const) {
+      const result = await Effect.runPromise(
+        parseTransactionResponse(
+          { Status: "OK", TxnId: 1, Label: `phase_${phase}` },
+          `phase_${phase}`,
+          phase
+        )
+      )
+      expect(result.status).toBe("OK")
+    }
+  })
+
+  test("error includes txnId when present in FAILED response", async () => {
+    const error = await Effect.runPromise(
+      parseTransactionResponse(
+        { Status: "FAILED", TxnId: 777, Message: "oops" },
+        "txn_id_err",
+        "commit"
+      ).pipe(Effect.flip)
+    )
+
+    expect(error.txnId).toBe(777)
+  })
 })
 
 // ============================================================================
