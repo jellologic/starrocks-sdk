@@ -117,7 +117,7 @@ function tableToIntrospected(
 
   if (config.distribution) {
     distributionType = config.distribution.type;
-    buckets = config.distribution.buckets;
+    buckets = config.distribution.buckets ?? null;
     if (config.distribution.type === "HASH") {
       distributionColumns = config.distribution.columns;
     }
@@ -255,7 +255,7 @@ function materializedViewToIntrospected(
 
   if (mv.config.distribution) {
     distributionType = mv.config.distribution.type;
-    buckets = mv.config.distribution.buckets;
+    buckets = mv.config.distribution.buckets ?? null;
     if (mv.config.distribution.type === "HASH") {
       distributionColumns = mv.config.distribution.columns;
     }

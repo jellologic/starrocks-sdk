@@ -1,6 +1,6 @@
 {
   "name": "@jellologic/starrocks-sdk",
-  "version": "0.1.0",
+  "version": "0.3.0",
   "type": "module",
   "description": "Type-safe StarRocks client with Effect.ts integration — DDL DSL, Stream Load, 2PC transactions, and materialized view management",
   "author": "jellologic",

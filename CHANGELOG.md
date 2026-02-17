@@ -7,8 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-02-17
+
 ### Added
 
+- `withTransaction` convenience method with auto-commit on success and auto-abort on failure (#51)
+- `TransactionResult` return type on `load()` with per-load metrics (rows, bytes) (#49)
+- `timeoutMs` propagation through `TransactionHandle` to all transaction operations (#50)
+- `TransactionPrepareOptions` with `preparedTimeout` for 2PC PREPARED phase control (#50)
+- `prepares` metric counter in observability hooks (#48)
+- `numberTotalRows` field on `TransactionResult` (#48)
+- Schema DDL: column `comment()`, `autoIncrement()`, and `generatedAs()` builder methods
+- Schema DDL: `sortKey()` for ORDER BY clause
+- Schema DDL: table-level `comment` option
+- Schema DDL: `flattenProperties()` for proper nested PROPERTIES serialization (e.g. `dynamic_partition.*`)
+- Schema DDL: inline bitmap index generation inside column list
+- Schema DDL: typed properties (`compression`, `write_quorum`, `replicated_storage`, `fast_schema_evolution`, etc.)
+- Schema DDL: auto-bucketing support (optional `buckets` on `hash()` and `random()`)
+- Comprehensive DDL integration tests (`test/schema-ddl.test.ts`)
+- Transaction unit tests with mock layers (`test/transaction-unit.test.ts`)
 - ALTER TABLE DDL builder with fluent immutable API (#39)
 - Observability hooks: Effect Metrics and Spans for StreamLoad and Transaction layers (#28)
 - Test coverage reporting via `bun test --coverage` in CI (#36)
@@ -23,6 +40,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- `status` field (e.g. `LABEL_ALREADY_EXISTS`) now included in `TransactionError` from `parseResponse` (#48)
+- Retry logic added to `abort` operation to prevent dangling transactions on transient errors (#48)
+- Flaky MV battle tests stabilized with `REFRESH ... WITH SYNC MODE` (#52)
+- Schema differ edge case: default value comparison for non-PRIMARY KEY tables (#52)
+- Views-schema tests: replaced broken `SHOW MATERIALIZED VIEWS` with `SHOW CREATE MATERIALIZED VIEW` (#52)
 - "Timed out" errors now correctly classified as retryable in both layers (#36)
 - Tightened Biome lint rules: `noNonNullAssertion` and `noExplicitAny` enforced in src/ (#46)
 - CI security: pinned Docker image, added `--frozen-lockfile`, removed unsafe scripts (#37)
@@ -31,6 +53,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- `load()` returns `TransactionResult` instead of `void` (backwards compatible) (#49)
+- Distribution `buckets` parameter is now optional for StarRocks auto-bucketing
+- PROPERTIES serialization uses `flattenProperties()` for nested objects (e.g. `dynamic_partition.enable`)
 - Documented `sql` template tag parameterization safety (#40)
 - Clarified retry schedule semantics and documented retryable error conditions (#35)
 
