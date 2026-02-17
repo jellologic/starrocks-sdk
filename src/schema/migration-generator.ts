@@ -246,7 +246,7 @@ function generateTableAlterStatements(
     const table = schema.getTable(tableName);
     if (table && table.config.properties) {
       // Build property SET clause from the defined properties that changed
-      const changedKeys = change.propertyChanges.map((c) => c.split(":")[0]!.trim());
+      const changedKeys = change.propertyChanges.map((c) => (c.split(":")[0] ?? "").trim());
       const setPairs: string[] = [];
       for (const key of changedKeys) {
         const value = table.config.properties[key];
@@ -364,7 +364,7 @@ function generateColumnAlterStatements(
 
   switch (change.type) {
     case "add": {
-      const col = change.newColumn!;
+      const col = change.newColumn as NonNullable<typeof change.newColumn>;
       let colDef = `${col.name} ${col.dataType}`;
       if (col.isNotNull) colDef += " NOT NULL";
       if (col.defaultValue !== undefined) {
@@ -399,7 +399,7 @@ function generateColumnAlterStatements(
       });
 
       // For down, try to recreate the column
-      const oldCol = change.oldColumn!;
+      const oldCol = change.oldColumn as NonNullable<typeof change.oldColumn>;
       let colDef = `${oldCol.name} ${oldCol.dataType}`;
       if (!oldCol.isNullable) colDef += " NOT NULL";
       if (oldCol.defaultValue) colDef += ` DEFAULT ${oldCol.defaultValue}`;
@@ -415,7 +415,7 @@ function generateColumnAlterStatements(
     }
 
     case "modify": {
-      const col = change.newColumn!;
+      const col = change.newColumn as NonNullable<typeof change.newColumn>;
       let colDef = `${col.name} ${col.dataType}`;
       if (col.isNotNull) colDef += " NOT NULL";
       if (col.defaultValue !== undefined) {
@@ -431,7 +431,7 @@ function generateColumnAlterStatements(
       });
 
       // For down, revert to old column definition
-      const oldCol = change.oldColumn!;
+      const oldCol = change.oldColumn as NonNullable<typeof change.oldColumn>;
       let oldColDef = `${oldCol.name} ${oldCol.dataType}`;
       if (!oldCol.isNullable) oldColDef += " NOT NULL";
       if (oldCol.defaultValue) oldColDef += ` DEFAULT ${oldCol.defaultValue}`;
@@ -460,7 +460,7 @@ function generateIndexAlterStatements(
 ): void {
   switch (change.type) {
     case "add": {
-      const newIdx = change.newIndex!;
+      const newIdx = change.newIndex as NonNullable<typeof change.newIndex>;
       // Reconstruct IndexConfig from IntrospectedIndex for SQL generation
       const idxConfig = introspectedToIndexConfig(newIdx);
       if (idxConfig) {
@@ -503,7 +503,7 @@ function generateIndexAlterStatements(
     }
 
     case "modify": {
-      const newIdx = change.newIndex!;
+      const newIdx = change.newIndex as NonNullable<typeof change.newIndex>;
       const idxConfig = introspectedToIndexConfig(newIdx);
 
       // DROP + CREATE for modifications

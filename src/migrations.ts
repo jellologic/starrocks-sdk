@@ -152,9 +152,9 @@ export class MigrationRunner {
     for (const migration of migrations) {
       if (appliedIds.has(migration.id)) {
         // Check for checksum mismatch
-        const appliedMigration = applied.find(m => m.id === migration.id)!;
+        const appliedMigration = applied.find(m => m.id === migration.id);
         const currentChecksum = this.computeChecksum(migration);
-        if (appliedMigration.checksum !== currentChecksum) {
+        if (appliedMigration && appliedMigration.checksum !== currentChecksum) {
           conflicts.push(
             `Migration '${migration.id}' has been modified since it was applied`
           );
@@ -768,7 +768,8 @@ export class MigrationBuilder {
    */
   checkpoint(name: string): this {
     if (this.steps.length > 0) {
-      this.steps[this.steps.length - 1]!.checkpoint = name;
+      const lastStep = this.steps[this.steps.length - 1];
+      if (lastStep) lastStep.checkpoint = name;
     }
     return this;
   }

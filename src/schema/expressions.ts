@@ -39,7 +39,7 @@ export function sql(
   const sqlValues: unknown[] = [];
 
   for (let i = 0; i < strings.length; i++) {
-    sqlParts.push(strings[i]!);
+    sqlParts.push(strings[i] ?? "");
     if (i < values.length) {
       const val = values[i];
       if (isExpression(val)) {
@@ -177,7 +177,7 @@ export function and(
     return { _type: true, sql: "TRUE", values: [] };
   }
   if (conditions.length === 1) {
-    return conditions[0]!;
+    return conditions[0] as BooleanExpression;
   }
 
   const sql = conditions.map((c) => c.sql).join(" AND ");
@@ -198,7 +198,7 @@ export function or(
     return { _type: true, sql: "FALSE", values: [] };
   }
   if (conditions.length === 1) {
-    return conditions[0]!;
+    return conditions[0] as BooleanExpression;
   }
 
   const sql = conditions.map((c) => c.sql).join(" OR ");

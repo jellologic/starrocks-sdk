@@ -245,22 +245,22 @@ async function introspectAllTables(
         const rangeMatch = createSql.match(/PARTITION BY RANGE\s*\(([^)]+)\)/i);
         if (rangeMatch) {
           partitionType = "RANGE";
-          partitionColumn = rangeMatch[1]!.trim().replace(/`/g, "");
+          partitionColumn = (rangeMatch[1] ?? "").trim().replace(/`/g, "");
         } else {
           const listMatch = createSql.match(/PARTITION BY LIST\s*\(([^)]+)\)/i);
           if (listMatch) {
             partitionType = "LIST";
-            partitionColumn = listMatch[1]!.trim().replace(/`/g, "");
+            partitionColumn = (listMatch[1] ?? "").trim().replace(/`/g, "");
           }
         }
 
         // Parse properties
         const propsMatch = createSql.match(/PROPERTIES\s*\(([\s\S]*?)\)/i);
         if (propsMatch) {
-          const propsStr = propsMatch[1]!;
+          const propsStr = propsMatch[1] ?? "";
           const propMatches = propsStr.matchAll(/"([^"]+)"\s*=\s*"([^"]*)"/g);
           for (const m of propMatches) {
-            properties[m[1]!] = m[2]!;
+            properties[m[1] ?? ""] = m[2] ?? "";
           }
         }
       }
@@ -334,7 +334,8 @@ async function introspectTableIndexes(
       if (!indexMap.has(indexName)) {
         indexMap.set(indexName, { columns: [], type: normalizedType, comment });
       }
-      indexMap.get(indexName)!.columns.push(columnName);
+      const entry = indexMap.get(indexName);
+      if (entry) entry.columns.push(columnName);
     }
 
     for (const [indexName, info] of indexMap) {

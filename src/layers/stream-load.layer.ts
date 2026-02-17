@@ -386,7 +386,7 @@ export const StreamLoadLive = Layer.scoped(
             )
           }
 
-          const columns = Object.keys(objects[0]!)
+          const columns = Object.keys(objects[0] as Record<string, unknown>)
           const json = JSON.stringify(objects)
 
           return yield* doLoad(json, {

@@ -179,7 +179,7 @@ export class SchemaIntrospector {
     // Parse key columns
     const keyMatch = createStmt.match(/(?:PRIMARY|UNIQUE|AGGREGATE|DUPLICATE)\s+KEY\s*\(([^)]+)\)/i);
     const keyColumns = keyMatch
-      ? keyMatch[1]!.split(",").map(c => c.trim().replace(/`/g, ""))
+      ? (keyMatch[1] ?? "").split(",").map(c => c.trim().replace(/`/g, ""))
       : [];
 
     // Parse distribution
@@ -192,13 +192,13 @@ export class SchemaIntrospector {
     } else {
       const distMatch = createStmt.match(/DISTRIBUTED BY HASH\s*\(([^)]+)\)/i);
       if (distMatch) {
-        distributionColumns = distMatch[1]!.split(",").map(c => c.trim().replace(/`/g, ""));
+        distributionColumns = (distMatch[1] ?? "").split(",").map(c => c.trim().replace(/`/g, ""));
       }
     }
 
     const bucketsMatch = createStmt.match(/BUCKETS\s+(\d+)/i);
     if (bucketsMatch) {
-      buckets = parseInt(bucketsMatch[1]!, 10);
+      buckets = parseInt(bucketsMatch[1] ?? "0", 10);
     }
 
     // Parse partition
@@ -209,13 +209,13 @@ export class SchemaIntrospector {
       partitionType = "RANGE";
       const partMatch = createStmt.match(/PARTITION BY RANGE\s*\(([^)]+)\)/i);
       if (partMatch) {
-        partitionColumns = partMatch[1]!.split(",").map(c => c.trim().replace(/`/g, ""));
+        partitionColumns = (partMatch[1] ?? "").split(",").map(c => c.trim().replace(/`/g, ""));
       }
     } else if (upper.includes("PARTITION BY LIST")) {
       partitionType = "LIST";
       const partMatch = createStmt.match(/PARTITION BY LIST\s*\(([^)]+)\)/i);
       if (partMatch) {
-        partitionColumns = partMatch[1]!.split(",").map(c => c.trim().replace(/`/g, ""));
+        partitionColumns = (partMatch[1] ?? "").split(",").map(c => c.trim().replace(/`/g, ""));
       }
     }
 
@@ -223,11 +223,11 @@ export class SchemaIntrospector {
     const properties: Record<string, string> = {};
     const propsMatch = createStmt.match(/PROPERTIES\s*\(([\s\S]*?)\)/i);
     if (propsMatch) {
-      const propsStr = propsMatch[1]!;
+      const propsStr = propsMatch[1] ?? "";
       const propRegex = /"([^"]+)"\s*=\s*"([^"]*)"/g;
       let match;
       while ((match = propRegex.exec(propsStr)) !== null) {
-        properties[match[1]!] = match[2]!;
+        properties[match[1] ?? ""] = match[2] ?? "";
       }
     }
 
@@ -252,7 +252,7 @@ export class SchemaIntrospector {
       "i"
     );
     const match = createStmt.match(regex);
-    return match ? match[1]!.toUpperCase() : undefined;
+    return match?.[1]?.toUpperCase();
   }
 }
 

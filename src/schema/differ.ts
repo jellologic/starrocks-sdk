@@ -163,10 +163,11 @@ function diffTable(
   defined: TableWithRefs<string, Columns> | Table<string, Columns>,
   existing: IntrospectedTable
 ): TableChange | null {
+  const columnChanges: ColumnChange[] = [];
   const changes: TableChange = {
     name: existing.name,
     type: "alter",
-    columnChanges: [],
+    columnChanges,
   };
 
   // Compare columns
@@ -178,7 +179,7 @@ function diffTable(
   // Find added columns
   for (const [name, col] of definedColumns) {
     if (!existingColumns.has(name)) {
-      changes.columnChanges!.push({
+      columnChanges.push({
         type: "add",
         columnName: name,
         newColumn: col as Column<any, any, any, any>,
@@ -189,7 +190,7 @@ function diffTable(
   // Find removed columns
   for (const [name, col] of existingColumns) {
     if (!definedColumns.has(name)) {
-      changes.columnChanges!.push({
+      columnChanges.push({
         type: "remove",
         columnName: name,
         oldColumn: col,
@@ -204,7 +205,7 @@ function diffTable(
       const isPrimaryKey = defined.config.key?.type === "PRIMARY";
       const colChanges = diffColumn(definedCol as Column<any, any, any, any>, existingCol, isPrimaryKey);
       if (colChanges.length > 0) {
-        changes.columnChanges!.push({
+        columnChanges.push({
           type: "modify",
           columnName: name,
           oldColumn: existingCol,
@@ -250,7 +251,7 @@ function diffTable(
 
   // Return null if no changes
   if (
-    changes.columnChanges!.length === 0 &&
+    columnChanges.length === 0 &&
     !changes.keyChange &&
     !changes.distributionChange &&
     !changes.partitionChange &&

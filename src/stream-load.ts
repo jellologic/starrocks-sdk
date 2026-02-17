@@ -326,7 +326,7 @@ export class StreamLoadClient {
     }
 
     // Extract column names from first object
-    const columns = Object.keys(objects[0]!);
+    const columns = Object.keys(objects[0] as Record<string, unknown>);
 
     return this.loadJson(objects, {
       ...options,

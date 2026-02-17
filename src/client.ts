@@ -210,11 +210,12 @@ export class StarRocksClient {
     sql += `\n${options.keyType} KEY(${options.keys.join(", ")})`;
 
     if (options.partitionBy) {
-      sql += `\nPARTITION BY ${options.partitionBy.type}(${options.partitionBy.column})`;
-      if (options.partitionBy.partitions?.length) {
-        const partDefs = options.partitionBy.partitions.map((p) => {
+      const partitionBy = options.partitionBy;
+      sql += `\nPARTITION BY ${partitionBy.type}(${partitionBy.column})`;
+      if (partitionBy.partitions?.length) {
+        const partDefs = partitionBy.partitions.map((p) => {
           const vals = Array.isArray(p.values) ? p.values.join(", ") : p.values;
-          return `PARTITION ${p.name} VALUES ${options.partitionBy!.type === "RANGE" ? `[${vals})` : `IN (${vals})`}`;
+          return `PARTITION ${p.name} VALUES ${partitionBy.type === "RANGE" ? `[${vals})` : `IN (${vals})`}`;
         });
         sql += ` (\n  ${partDefs.join(",\n  ")}\n)`;
       }
@@ -408,7 +409,7 @@ export class StarRocksClient {
     validateIdentifier(tableName);
     if (data.length === 0) return;
 
-    const columns = Object.keys(data[0]!);
+    const columns = Object.keys(data[0] as Record<string, unknown>);
     const batchSize = options?.batchSize ?? 1000;
 
     for (let i = 0; i < data.length; i += batchSize) {

@@ -642,7 +642,7 @@ export class KnexBuilder<
       throw new Error(`Cannot insert empty array into table '${tableName}'`);
     }
 
-    const jsKeys = Object.keys(data[0]!);
+    const jsKeys = Object.keys(data[0] as Record<string, unknown>);
     const dbColumns = jsKeys.map((k) => this.resolveColumnName(k));
     const tableName = (this._table as any)._tableName ?? this._table.name;
     const placeholders = dbColumns.map(() => "?").join(", ");
@@ -857,7 +857,7 @@ export class KnexBuilder<
     const values: unknown[] = [];
 
     for (let i = 0; i < this._whereClauses.length; i++) {
-      const clause = this._whereClauses[i]!;
+      const clause = this._whereClauses[i] as WhereClause;
       const boolean = i === 0 ? "WHERE" : clause.boolean.toUpperCase();
 
       switch (clause.type) {
@@ -866,18 +866,18 @@ export class KnexBuilder<
           values.push(clause.value);
           break;
         case "in":
-          const inPlaceholders = clause.values!.map(() => "?").join(", ");
+          const inPlaceholders = (clause.values ?? []).map(() => "?").join(", ");
           parts.push(`${boolean} ${clause.column} IN (${inPlaceholders})`);
-          values.push(...clause.values!);
+          values.push(...(clause.values ?? []));
           break;
         case "notIn":
-          const notInPlaceholders = clause.values!.map(() => "?").join(", ");
+          const notInPlaceholders = (clause.values ?? []).map(() => "?").join(", ");
           parts.push(`${boolean} ${clause.column} NOT IN (${notInPlaceholders})`);
-          values.push(...clause.values!);
+          values.push(...(clause.values ?? []));
           break;
         case "between":
           parts.push(`${boolean} ${clause.column} BETWEEN ? AND ?`);
-          values.push(...clause.values!);
+          values.push(...(clause.values ?? []));
           break;
         case "null":
           parts.push(`${boolean} ${clause.column} IS NULL`);
@@ -900,7 +900,7 @@ export class KnexBuilder<
     const values: unknown[] = [];
 
     for (let i = 0; i < this._havingClauses.length; i++) {
-      const clause = this._havingClauses[i]!;
+      const clause = this._havingClauses[i] as WhereClause;
       const boolean = i === 0 ? "HAVING" : clause.boolean.toUpperCase();
 
       if (clause.type === "raw") {

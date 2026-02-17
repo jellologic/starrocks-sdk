@@ -41,24 +41,24 @@ export function wrapPoolForStarRocks<T extends mysql.Pool>(pool: T): T {
   }
 
   // Overwrite .query()
-  pool.query = function patchedQuery(...args: any[]) {
+  pool.query = function patchedQuery(...args: unknown[]) {
     if (typeof args[0] === "string") {
       args[0] = patchSql(args[0]);
     } else if (args[0] && typeof args[0] === "object" && "sql" in args[0]) {
-      args[0].sql = patchSql(args[0].sql);
+      (args[0] as { sql: string }).sql = patchSql((args[0] as { sql: string }).sql);
     }
-    return (origQuery as any)(...args);
-  } as any;
+    return (origQuery as (...a: unknown[]) => unknown)(...args);
+  } as typeof pool.query;
 
   // Overwrite .execute()
-  pool.execute = function patchedExecute(...args: any[]) {
+  pool.execute = function patchedExecute(...args: unknown[]) {
     if (typeof args[0] === "string") {
       args[0] = patchSql(args[0]);
     } else if (args[0] && typeof args[0] === "object" && "sql" in args[0]) {
-      args[0].sql = patchSql(args[0].sql);
+      (args[0] as { sql: string }).sql = patchSql((args[0] as { sql: string }).sql);
     }
-    return (origExecute as any)(...args);
-  } as any;
+    return (origExecute as (...a: unknown[]) => unknown)(...args);
+  } as typeof pool.execute;
 
   return pool;
 }
