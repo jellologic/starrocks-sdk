@@ -65,13 +65,25 @@ describe("Error Creation", () => {
         table: "events",
         message: "Data quality issue",
         status: "FAILED",
+        httpStatus: 500,
         errorUrl: "http://localhost:8040/api/_load_error_log",
         numberFilteredRows: 42,
       });
 
       expect(error.status).toBe("FAILED");
+      expect(error.httpStatus).toBe(500);
       expect(error.errorUrl).toBe("http://localhost:8040/api/_load_error_log");
       expect(error.numberFilteredRows).toBe(42);
+    });
+
+    test("should include HTTP status in formatted message", () => {
+      const error = new StreamLoadError({
+        table: "events",
+        message: "Internal Server Error",
+        httpStatus: 500,
+      });
+
+      expect(error.formattedMessage).toContain("HTTP 500");
     });
 
     test("should generate formatted message with all context", () => {
@@ -138,11 +150,24 @@ describe("Error Creation", () => {
         txnId: 12345,
         table: "orders",
         status: "LABEL_ALREADY_EXISTS",
+        httpStatus: 409,
       });
 
       expect(error.txnId).toBe(12345);
       expect(error.table).toBe("orders");
       expect(error.status).toBe("LABEL_ALREADY_EXISTS");
+      expect(error.httpStatus).toBe(409);
+    });
+
+    test("should include HTTP status in formatted message", () => {
+      const error = new TransactionError({
+        label: "txn_789",
+        phase: "commit",
+        cause: "Service Unavailable",
+        httpStatus: 503,
+      });
+
+      expect(error.formattedMessage).toContain("HTTP 503");
     });
 
     test("should generate formatted message with all context", () => {

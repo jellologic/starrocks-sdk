@@ -20,6 +20,14 @@ const DEFAULT_MAX_DELAY_MS = 30000
  * Check if an error is retryable based on the error message or status
  */
 function isRetryableError(error: StreamLoadError): boolean {
+  // HTTP status-based retry: 429, 500, 502, 503, 504 are retryable
+  if (error.httpStatus !== undefined) {
+    const retryableStatuses = [429, 500, 502, 503, 504]
+    if (retryableStatuses.includes(error.httpStatus)) return true
+    // 4xx errors (except 429) are never retryable
+    if (error.httpStatus >= 400 && error.httpStatus < 500) return false
+  }
+
   const message = error.message.toLowerCase()
   const retryablePatterns = [
     "timeout",
@@ -180,12 +188,43 @@ export const StreamLoadLive = Layer.scoped(
             }),
         })
 
+        // Validate HTTP status before parsing body
+        if (!response.ok) {
+          const bodyText = yield* Effect.tryPromise({
+            try: () => response.text(),
+            catch: () =>
+              new StreamLoadError({
+                table: options.table,
+                message: `HTTP ${response.status}: Unable to read response body`,
+                httpStatus: response.status,
+              }),
+          })
+
+          // Try to parse JSON error from StarRocks even on HTTP errors
+          let serverMessage = bodyText
+          try {
+            const json = JSON.parse(bodyText)
+            if (typeof json?.Message === "string") serverMessage = json.Message
+          } catch {
+            // Use raw body text
+          }
+
+          return yield* Effect.fail(
+            new StreamLoadError({
+              table: options.table,
+              message: `HTTP ${response.status}: ${serverMessage}`,
+              httpStatus: response.status,
+            })
+          )
+        }
+
         const result = yield* Effect.tryPromise({
           try: () => response.json() as Promise<Record<string, unknown>>,
           catch: () =>
             new StreamLoadError({
               table: options.table,
               message: "Failed to parse response JSON",
+              httpStatus: response.status,
             }),
         })
 

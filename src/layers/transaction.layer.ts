@@ -63,9 +63,74 @@ function parseResponse(
 const DEFAULT_HTTP_TIMEOUT_MS = 120_000
 
 /**
+ * Validate HTTP response and extract JSON body.
+ * Fails with TransactionError if HTTP status is not OK.
+ */
+function validateHttpResponse(
+  response: Response,
+  label: string,
+  phase: "begin" | "load" | "prepare" | "commit" | "abort",
+  txnId?: number
+): Effect.Effect<Record<string, unknown>, TransactionError> {
+  return Effect.gen(function* () {
+    if (!response.ok) {
+      const bodyText = yield* Effect.tryPromise({
+        try: () => response.text(),
+        catch: () =>
+          new TransactionError({
+            label,
+            phase,
+            txnId,
+            cause: `HTTP ${response.status}: Unable to read response body`,
+            httpStatus: response.status,
+          }),
+      })
+
+      let serverMessage = bodyText
+      try {
+        const json = JSON.parse(bodyText)
+        if (typeof json?.Message === "string") serverMessage = json.Message
+      } catch {
+        // Use raw body text
+      }
+
+      return yield* Effect.fail(
+        new TransactionError({
+          label,
+          phase,
+          txnId,
+          cause: `HTTP ${response.status}: ${serverMessage}`,
+          httpStatus: response.status,
+        })
+      )
+    }
+
+    return yield* Effect.tryPromise({
+      try: () => response.json() as Promise<Record<string, unknown>>,
+      catch: () =>
+        new TransactionError({
+          label,
+          phase,
+          txnId,
+          cause: "Failed to parse response",
+          httpStatus: response.status,
+        }),
+    })
+  })
+}
+
+/**
  * Check if an error is retryable
  */
 function isRetryableError(error: TransactionError): boolean {
+  // HTTP status-based retry: 429, 500, 502, 503, 504 are retryable
+  if (error.httpStatus !== undefined) {
+    const retryableStatuses = [429, 500, 502, 503, 504]
+    if (retryableStatuses.includes(error.httpStatus)) return true
+    // 4xx errors (except 429) are never retryable
+    if (error.httpStatus >= 400 && error.httpStatus < 500) return false
+  }
+
   const message = (error.cause ?? "").toLowerCase()
   const retryablePatterns = [
     "timeout", "connection refused", "connection reset",
@@ -140,15 +205,7 @@ export const TransactionLive = Layer.scoped(
               }),
           })
 
-          const result = yield* Effect.tryPromise({
-            try: () => response.json() as Promise<Record<string, unknown>>,
-            catch: () =>
-              new TransactionError({
-                label: options.label,
-                phase: "begin",
-                cause: "Failed to parse response",
-              }),
-          })
+          const result = yield* validateHttpResponse(response, options.label, "begin")
 
           const parsed = yield* parseResponse(result, options.label, "begin")
 
@@ -200,16 +257,7 @@ export const TransactionLive = Layer.scoped(
               }),
           })
 
-          const result = yield* Effect.tryPromise({
-            try: () => response.json() as Promise<Record<string, unknown>>,
-            catch: () =>
-              new TransactionError({
-                label: handle.label,
-                phase: "load",
-                txnId: handle.txnId,
-                cause: "Failed to parse response",
-              }),
-          })
+          const result = yield* validateHttpResponse(response, handle.label, "load", handle.txnId)
 
           yield* parseResponse(result, handle.label, "load")
         }).pipe(Effect.retry(retrySchedule)),
@@ -237,16 +285,7 @@ export const TransactionLive = Layer.scoped(
               }),
           })
 
-          const result = yield* Effect.tryPromise({
-            try: () => response.json() as Promise<Record<string, unknown>>,
-            catch: () =>
-              new TransactionError({
-                label: handle.label,
-                phase: "prepare",
-                txnId: handle.txnId,
-                cause: "Failed to parse response",
-              }),
-          })
+          const result = yield* validateHttpResponse(response, handle.label, "prepare", handle.txnId)
 
           return yield* parseResponse(result, handle.label, "prepare")
         }).pipe(Effect.retry(retrySchedule)),
@@ -274,16 +313,7 @@ export const TransactionLive = Layer.scoped(
               }),
           })
 
-          const result = yield* Effect.tryPromise({
-            try: () => response.json() as Promise<Record<string, unknown>>,
-            catch: () =>
-              new TransactionError({
-                label: handle.label,
-                phase: "commit",
-                txnId: handle.txnId,
-                cause: "Failed to parse response",
-              }),
-          })
+          const result = yield* validateHttpResponse(response, handle.label, "commit", handle.txnId)
 
           return yield* parseResponse(result, handle.label, "commit")
         }).pipe(Effect.retry(retrySchedule)),
@@ -311,16 +341,7 @@ export const TransactionLive = Layer.scoped(
               }),
           })
 
-          const result = yield* Effect.tryPromise({
-            try: () => response.json() as Promise<Record<string, unknown>>,
-            catch: () =>
-              new TransactionError({
-                label: handle.label,
-                phase: "abort",
-                txnId: handle.txnId,
-                cause: "Failed to parse response",
-              }),
-          })
+          const result = yield* validateHttpResponse(response, handle.label, "abort", handle.txnId)
 
           yield* parseResponse(result, handle.label, "abort")
         }),

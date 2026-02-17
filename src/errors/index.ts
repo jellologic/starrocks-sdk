@@ -26,6 +26,8 @@ export class StreamLoadError extends Schema.TaggedError<StreamLoadError>()(
     table: Schema.String,
     message: Schema.String,
     status: Schema.optional(Schema.String),
+    /** HTTP status code from the response (e.g., 200, 401, 500) */
+    httpStatus: Schema.optional(Schema.Number),
     errorUrl: Schema.optional(Schema.String),
     numberFilteredRows: Schema.optional(Schema.Number),
   }
@@ -34,6 +36,7 @@ export class StreamLoadError extends Schema.TaggedError<StreamLoadError>()(
   get formattedMessage(): string {
     let msg = `Stream load to '${this.table}' failed: ${this.message}`
     if (this.status) msg += ` (status: ${this.status})`
+    if (this.httpStatus) msg += ` (HTTP ${this.httpStatus})`
     if (this.numberFilteredRows) msg += ` [${this.numberFilteredRows} rows filtered]`
     if (this.errorUrl) msg += ` - Details: ${this.errorUrl}`
     return msg
@@ -50,8 +53,10 @@ export class TransactionError extends Schema.TaggedError<TransactionError>()(
     phase: Schema.Literal("begin", "load", "prepare", "commit", "abort"),
     txnId: Schema.optional(Schema.Number),
     cause: Schema.String,
-    /** HTTP status from StarRocks (if applicable) */
+    /** StarRocks response status (e.g., "FAILED", "LABEL_ALREADY_EXISTS") */
     status: Schema.optional(Schema.String),
+    /** HTTP status code from the response (e.g., 200, 401, 500) */
+    httpStatus: Schema.optional(Schema.Number),
     /** Target table (if known) */
     table: Schema.optional(Schema.String),
   }
@@ -62,6 +67,7 @@ export class TransactionError extends Schema.TaggedError<TransactionError>()(
     if (this.txnId) msg += ` (txnId: ${this.txnId})`
     if (this.table) msg += ` [table: ${this.table}]`
     if (this.status) msg += ` (status: ${this.status})`
+    if (this.httpStatus) msg += ` (HTTP ${this.httpStatus})`
     return msg
   }
 }
