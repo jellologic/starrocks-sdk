@@ -30,6 +30,7 @@ export {
   type TransactionResult as EffectTransactionResult,
   type TransactionLoadOptions as EffectTransactionLoadOptions,
   type TransactionBeginOptions,
+  type TransactionPrepareOptions,
 } from "./services/transaction.service"
 
 export {
