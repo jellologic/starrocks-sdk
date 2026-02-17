@@ -15,6 +15,7 @@ import {
   MaterializedViewError,
   QueryError,
 } from "../src/errors/index";
+import { StarRocksConfigFromEnv } from "../src/config/starrocks.config";
 
 // ============================================================================
 // Error Creation Tests
@@ -740,5 +741,50 @@ describe("Error Tag Uniqueness", () => {
     expect(
       new QueryError({ operation: "select", reason: "" })._tag
     ).toBe("QueryError");
+  });
+});
+
+// ============================================================================
+// Config Error Integration Tests
+// ============================================================================
+
+describe("Config Error Integration", () => {
+  test("StarRocksConfigFromEnv should fail with ConnectionError when env vars missing", async () => {
+    // Save and clear env vars
+    const saved = {
+      host: process.env.STARROCKS_HOST,
+      port: process.env.STARROCKS_HTTP_PORT,
+      user: process.env.STARROCKS_USER,
+    };
+    delete process.env.STARROCKS_HOST;
+    delete process.env.STARROCKS_HTTP_PORT;
+    delete process.env.STARROCKS_USER;
+
+    try {
+      const program = Effect.gen(function* () {
+        yield* Effect.void;
+        return "should not reach";
+      }).pipe(
+        Effect.provide(StarRocksConfigFromEnv),
+        Effect.catchTags({
+          ConnectionError: (e) => Effect.succeed(`caught: ${e.cause}`),
+        }),
+        // Catch the defect that Layer failures produce
+        Effect.catchAll((e) => {
+          if (e instanceof ConnectionError) {
+            return Effect.succeed(`caught: ${e.cause}`);
+          }
+          return Effect.fail(e);
+        })
+      );
+
+      const result = await Effect.runPromise(program);
+      expect(result).toContain("Missing required environment variables");
+    } finally {
+      // Restore env vars
+      if (saved.host) process.env.STARROCKS_HOST = saved.host;
+      if (saved.port) process.env.STARROCKS_HTTP_PORT = saved.port;
+      if (saved.user) process.env.STARROCKS_USER = saved.user;
+    }
   });
 });

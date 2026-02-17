@@ -1,5 +1,6 @@
 import { Context, Effect, Layer } from "effect"
 import { Schema } from "@effect/schema"
+import { ConnectionError } from "../errors"
 
 /**
  * StarRocks connection configuration schema with validation
@@ -62,9 +63,11 @@ export const StarRocksConfigFromEnv = Layer.effect(
 
     if (!host || !httpPort || !user) {
       return yield* Effect.fail(
-        new Error(
-          "Missing required environment variables: STARROCKS_HOST, STARROCKS_HTTP_PORT, STARROCKS_USER"
-        )
+        new ConnectionError({
+          host: host ?? "unknown",
+          port: httpPort ? parseInt(httpPort, 10) : 0,
+          cause: "Missing required environment variables: STARROCKS_HOST, STARROCKS_HTTP_PORT, STARROCKS_USER",
+        })
       )
     }
 
