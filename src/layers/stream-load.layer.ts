@@ -1,5 +1,5 @@
 // packages/starrocks/src/layers/stream-load.layer.ts
-import { Effect, Layer, Schedule, Duration } from "effect"
+import { Effect, Layer, Schedule, Duration, Metric } from "effect"
 import {
   StreamLoad,
   type StreamLoadService,
@@ -9,6 +9,7 @@ import {
 import { StreamLoadError } from "../errors"
 import { StarRocksConfig } from "../config/starrocks.config"
 import { buildLoadHeaders } from "../services/shared-options"
+import { streamLoadMetrics } from "../observability"
 
 /**
  * Default retry configuration
@@ -363,7 +364,8 @@ export const StreamLoadLive = Layer.scoped(
       })
 
     /**
-     * Load with automatic retry for transient failures
+     * Load with automatic retry for transient failures.
+     * Records metrics: duration, rows loaded/filtered, bytes, errors.
      */
     const doLoad = (
       data: string | Buffer,
@@ -382,8 +384,32 @@ export const StreamLoadLive = Layer.scoped(
           )
         }
 
-        return yield* doLoadInner(data, options)
-      })
+        const start = Date.now()
+        const result = yield* doLoadInner(data, options).pipe(
+          Effect.tapError(() =>
+            Metric.increment(streamLoadMetrics.errors).pipe(
+              Effect.withSpan("starrocks.stream_load.error", {
+                attributes: { database: options.database, table: options.table },
+              })
+            )
+          )
+        )
+
+        // Record success metrics
+        const durationMs = Date.now() - start
+        yield* Metric.update(streamLoadMetrics.duration, durationMs)
+        yield* Metric.incrementBy(streamLoadMetrics.rowsLoaded, result.numberLoadedRows)
+        yield* Metric.incrementBy(streamLoadMetrics.bytesLoaded, result.loadBytes)
+        if (result.numberFilteredRows > 0) {
+          yield* Metric.incrementBy(streamLoadMetrics.rowsFiltered, result.numberFilteredRows)
+        }
+
+        return result
+      }).pipe(
+        Effect.withSpan("starrocks.stream_load", {
+          attributes: { database: options.database, table: options.table, format: options.format },
+        })
+      )
 
     const doLoadInner = (
       data: string | Buffer,

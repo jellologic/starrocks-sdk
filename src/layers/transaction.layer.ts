@@ -1,5 +1,5 @@
 // packages/starrocks/src/layers/transaction.layer.ts
-import { Effect, Layer, Schedule, Duration } from "effect"
+import { Effect, Layer, Schedule, Duration, Metric } from "effect"
 import {
   Transaction,
   type TransactionService,
@@ -9,6 +9,7 @@ import {
 import { TransactionError } from "../errors"
 import { StarRocksConfig } from "../config/starrocks.config"
 import { buildLoadHeaders } from "../services/shared-options"
+import { transactionMetrics } from "../observability"
 
 /**
  * Parse and validate transaction response from StarRocks.
@@ -245,6 +246,8 @@ export const TransactionLive = Layer.scoped(
 
           const parsed = yield* parseResponse(result, options.label, "begin")
 
+          yield* Metric.increment(transactionMetrics.begins)
+
           return {
             label: options.label,
             txnId: parsed.txnId,
@@ -252,7 +255,13 @@ export const TransactionLive = Layer.scoped(
             table: options.table,
             multiTable: options.multiTable ?? false,
           } satisfies TransactionHandle
-        }).pipe(Effect.retry(retrySchedule)),
+        }).pipe(
+          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+          Effect.retry(retrySchedule),
+          Effect.withSpan("starrocks.transaction.begin", {
+            attributes: { database: options.database, table: options.table, label: options.label },
+          }),
+        ),
 
       load: (handle, data, options) =>
         Effect.gen(function* () {
@@ -274,6 +283,7 @@ export const TransactionLive = Layer.scoped(
             ...loadHeaders,
           })
 
+          const start = Date.now()
           const response = yield* Effect.tryPromise({
             try: () => fetch(`${baseUrl}/load`, {
               method: "PUT",
@@ -295,7 +305,15 @@ export const TransactionLive = Layer.scoped(
           const result = yield* validateHttpResponse(response, handle.label, "load", handle.txnId)
 
           yield* parseResponse(result, handle.label, "load")
-        }).pipe(Effect.retry(retrySchedule)),
+
+          yield* Metric.update(transactionMetrics.loadDuration, Date.now() - start)
+        }).pipe(
+          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+          Effect.retry(retrySchedule),
+          Effect.withSpan("starrocks.transaction.load", {
+            attributes: { database: handle.database, label: handle.label },
+          }),
+        ),
 
       prepare: (handle) =>
         Effect.gen(function* () {
@@ -323,7 +341,13 @@ export const TransactionLive = Layer.scoped(
           const result = yield* validateHttpResponse(response, handle.label, "prepare", handle.txnId)
 
           return yield* parseResponse(result, handle.label, "prepare")
-        }).pipe(Effect.retry(retrySchedule)),
+        }).pipe(
+          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+          Effect.retry(retrySchedule),
+          Effect.withSpan("starrocks.transaction.prepare", {
+            attributes: { database: handle.database, label: handle.label },
+          }),
+        ),
 
       commit: (handle) =>
         Effect.gen(function* () {
@@ -350,8 +374,18 @@ export const TransactionLive = Layer.scoped(
 
           const result = yield* validateHttpResponse(response, handle.label, "commit", handle.txnId)
 
-          return yield* parseResponse(result, handle.label, "commit")
-        }).pipe(Effect.retry(retrySchedule)),
+          const parsed = yield* parseResponse(result, handle.label, "commit")
+
+          yield* Metric.increment(transactionMetrics.commits)
+
+          return parsed
+        }).pipe(
+          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+          Effect.retry(retrySchedule),
+          Effect.withSpan("starrocks.transaction.commit", {
+            attributes: { database: handle.database, label: handle.label },
+          }),
+        ),
 
       abort: (handle) =>
         Effect.gen(function* () {
@@ -379,7 +413,14 @@ export const TransactionLive = Layer.scoped(
           const result = yield* validateHttpResponse(response, handle.label, "abort", handle.txnId)
 
           yield* parseResponse(result, handle.label, "abort")
-        }),
+
+          yield* Metric.increment(transactionMetrics.aborts)
+        }).pipe(
+          Effect.tapError(() => Metric.increment(transactionMetrics.errors)),
+          Effect.withSpan("starrocks.transaction.abort", {
+            attributes: { database: handle.database, label: handle.label },
+          }),
+        ),
     } satisfies TransactionService
   })
 )
