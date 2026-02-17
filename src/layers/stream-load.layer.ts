@@ -29,7 +29,8 @@ const DEFAULT_MAX_DELAY_MS = 30000
  *
  * Non-retryable: any 4xx status (except 429), data format errors, auth failures.
  */
-function isRetryableError(error: StreamLoadError): boolean {
+/** @internal Exported for testing */
+export function isRetryableError(error: StreamLoadError): boolean {
   // HTTP status-based retry: 429, 500, 502, 503, 504 are retryable
   if (error.httpStatus !== undefined) {
     const retryableStatuses = [429, 500, 502, 503, 504]
@@ -41,6 +42,7 @@ function isRetryableError(error: StreamLoadError): boolean {
   const message = error.message.toLowerCase()
   const retryablePatterns = [
     "timeout",
+    "timed out",
     "connection refused",
     "connection reset",
     "econnreset",
@@ -89,7 +91,8 @@ function createRetrySchedule(maxRetries: number, initialDelayMs: number, maxDela
  */
 const IDENTIFIER_RE = /^[a-zA-Z_][a-zA-Z0-9_]*$/
 
-function validateLoadOptions(
+/** @internal Exported for testing */
+export function validateLoadOptions(
   options: StreamLoadOptions
 ): Effect.Effect<void, StreamLoadError> {
   if (!options.database || !IDENTIFIER_RE.test(options.database)) {
@@ -195,7 +198,8 @@ function generateLabel(): string {
  * Parse and validate Stream Load response from StarRocks.
  * Uses runtime type checks instead of unsafe `as` casts.
  */
-function parseResponse(result: Record<string, unknown>): StreamLoadResult {
+/** @internal Exported for testing */
+export function parseResponse(result: Record<string, unknown>): StreamLoadResult {
   const validStatuses = ["Success", "Fail", "Publish Timeout", "Label Already Exists"] as const
   const rawStatus = typeof result.Status === "string" ? result.Status : "Fail"
   const status = validStatuses.includes(rawStatus as typeof validStatuses[number])

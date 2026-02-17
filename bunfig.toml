@@ -1,2 +1,4 @@
 [test]
 preload = ["./test/global-setup.ts"]
+coverage = true
+coverageSkipTestFiles = true

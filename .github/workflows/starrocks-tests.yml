@@ -49,8 +49,8 @@ jobs:
             sleep 5
           done
 
-      - name: Run tests
-        run: bun test --timeout 30000
+      - name: Run tests with coverage
+        run: bun test --timeout 30000 --coverage
         env:
           STARROCKS_TEST_HOST: 127.0.0.1
           STARROCKS_TEST_PORT: 9030

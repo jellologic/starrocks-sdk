@@ -16,7 +16,8 @@ import { transactionMetrics } from "../observability"
  * Uses runtime type checks instead of unsafe `as` casts.
  * Returns Effect to properly handle errors in the Effect error channel.
  */
-function parseResponse(
+/** @internal Exported for testing */
+export function parseResponse(
   result: Record<string, unknown>,
   label: string,
   phase: "begin" | "load" | "prepare" | "commit" | "abort"
@@ -155,7 +156,8 @@ function validateHttpResponse(
  *
  * Non-retryable: any 4xx status (except 429), transaction-state errors, auth failures.
  */
-function isRetryableError(error: TransactionError): boolean {
+/** @internal Exported for testing */
+export function isRetryableError(error: TransactionError): boolean {
   // HTTP status-based retry: 429, 500, 502, 503, 504 are retryable
   if (error.httpStatus !== undefined) {
     const retryableStatuses = [429, 500, 502, 503, 504]
@@ -166,7 +168,7 @@ function isRetryableError(error: TransactionError): boolean {
 
   const message = (error.cause ?? "").toLowerCase()
   const retryablePatterns = [
-    "timeout", "connection refused", "connection reset",
+    "timeout", "timed out", "connection refused", "connection reset",
     "econnreset", "econnrefused", "etimedout", "socket hang up",
     "network error", "service unavailable", "temporarily unavailable",
   ]
